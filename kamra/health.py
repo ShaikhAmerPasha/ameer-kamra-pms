@@ -148,9 +148,9 @@ def _database_check() -> dict:
 def _frappe_check() -> dict:
 	ver = getattr(frappe, "__version__", None) or "unknown"
 	major = int(str(ver).split(".")[0]) if str(ver)[0:1].isdigit() else 0
-	if major and major < 16:
+	if major and major < 15:
 		status = "attention"
-		detail = f"Frappe {ver} — Kamra targets Frappe v16."
+		detail = f"Frappe {ver} — Kamra targets Frappe v15 or v16."
 	else:
 		status = "passed"
 		detail = f"Frappe {ver}."

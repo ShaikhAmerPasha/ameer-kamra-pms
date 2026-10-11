@@ -43,7 +43,7 @@ def check_pyproject() -> None:
 		fail(f"requires-python floor too high for FC v16: {req!r}")
 	deps = data.get("tool", {}).get("bench", {}).get("frappe-dependencies", {})
 	frappe_spec = deps.get("frappe", "")
-	if "16" not in frappe_spec or "<17" not in frappe_spec:
+	if not (("15" in frappe_spec or "16" in frappe_spec) and "<17" in frappe_spec):
 		fail(f"bad frappe version specifier: {frappe_spec!r}")
 	ok(f"pyproject.toml valid (python {req}, frappe {frappe_spec})")
 
