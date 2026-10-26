@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react"
 import { ArrowLeft, ArrowRightLeft, Printer, Trash2, X } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { call } from "../lib/api"
+import { call, getCurrentProperty } from "../lib/api"
 import EditableNationality from "../components/EditableNationality"
 import LinkedRecords from "../components/LinkedRecords"
 import { loadLocale, taxRates } from "../lib/money"
@@ -10,13 +10,14 @@ import { useCashierAuth } from "../lib/cashierAuth"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { cur, locale, moneyLocale, taxLabel, useLocale } from "../lib/money"
-import { useT } from "../lib/i18n"
+import { useT, t as translate, useUILanguage } from "../lib/i18n"
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "../components/ui/card"
+
 
 const inr = (n: unknown) =>
   Number(n ?? 0).toLocaleString(moneyLocale(), { maximumFractionDigits: 2 })
@@ -154,7 +155,7 @@ interface InvoiceData {
 
 const CHARGE_TYPES = [
   "Food & Beverage", "Minibar", "Laundry", "Spa",
-  "Early Check-in", "Late Checkout", "Discount", "Misc",
+  "Early Check-in", "Late Checkout", "Pet Charge", "Discount", "Misc",
 ]
 
 const inputCls =
@@ -165,17 +166,29 @@ interface SiblingFolio {
   name: string
   folio_type: string
   status: string
+  invoice_number?: string | null
   balance: number
   grand_total: number
   payments_total: number
 }
 
-/** A distinct label per folio - Extras get numbered when there's more than one. */
+/** A distinct label per folio. Extras get numbered when there's more than
+ *  one. Any other type that repeats (Settle & continue stay closes the Guest
+ *  folio and opens a fresh one) names the settled one by its invoice number,
+ *  and numbers open ones that still share a type. */
 function folioLabel(siblings: SiblingFolio[], s: SiblingFolio, tr: (s: string, v?: Record<string, string | number>) => string) {
-  if (s.folio_type !== "Extra") return tr(s.folio_type)
-  const extras = siblings.filter((x) => x.folio_type === "Extra")
-  if (extras.length <= 1) return tr("Extra")
-  return tr("Extra {n}", { n: extras.findIndex((x) => x.name === s.name) + 1 })
+  const same = siblings.filter((x) => x.folio_type === s.folio_type)
+  if (s.folio_type === "Extra") {
+    if (same.length <= 1) return tr("Extra")
+    return tr("Extra {n}", { n: same.findIndex((x) => x.name === s.name) + 1 })
+  }
+  const type = tr(s.folio_type)
+  if (same.length <= 1) return type
+  if (s.status === "Closed")
+    return s.invoice_number ? `${type} · ${s.invoice_number}` : tr("{type} · settled", { type })
+  const open = same.filter((x) => x.status !== "Closed")
+  if (open.length <= 1) return type
+  return `${type} ${open.findIndex((x) => x.name === s.name) + 1}`
 }
 const isEmptyFolio = (s: SiblingFolio) =>
   !s.grand_total && !s.payments_total
@@ -183,11 +196,48 @@ const isEmptyFolio = (s: SiblingFolio) =>
 /** One labelled fact on the printed bill - label and value stay on the
  *  same line so the header block reads as a form, not a paragraph. */
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  useUILanguage()
   return (
     <div className="flex gap-2">
-      <dt className="w-24 shrink-0 text-zinc-500">{label}</dt>
+      <dt className="w-24 shrink-0 text-zinc-500">{translate(label)}</dt>
       <dd className="min-w-0">{children}</dd>
     </div>
+  )
+}
+
+/** Kamra Verify: check the bill-to tax ID before the invoice goes out.
+ *  Offered where the country pack has it (India: GSTIN); paid per check
+ *  from the Kamra Connect wallet. */
+function VerifyTaxId({ taxId, name }: { taxId: string; name: string }) {
+  const { t } = useT()
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null)
+  return (
+    <span className="print:hidden">
+      {" "}
+      <button type="button" disabled={busy}
+        className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-50"
+        title={t("Kamra Verify checks this tax ID with the tax network. Charged per check to your Kamra Connect wallet.")}
+        onClick={async () => {
+          setBusy(true); setRes(null)
+          try {
+            const r = await call<{ valid: boolean; legal_name: string; status: string; charged: number }>(
+              "kamra.api.verify_tax_id",
+              { property: getCurrentProperty(), tax_id: taxId, business_name: name })
+            setRes({
+              ok: r.valid && (r.status || "").toLowerCase() === "active",
+              text: `${r.valid ? r.legal_name || t("Valid") : t("Not a valid tax ID")}${r.status ? ` · ${r.status}` : ""} · ${cur()}${r.charged}`,
+            })
+          } catch (e) {
+            setRes({ ok: false, text: serverError(e) })
+          } finally {
+            setBusy(false)
+          }
+        }}>
+        {busy ? t("Checking…") : t("Verify")}
+      </button>
+      {res && <span className={`ml-1 text-xs ${res.ok ? "text-emerald-700" : "text-red-700"}`}>{translate(res.text)}</span>}
+    </span>
   )
 }
 
@@ -206,6 +256,7 @@ export default function FolioView() {
   })
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [voidFor, setVoidFor] = useState<string | null>(null)
+  const [voidReason, setVoidReason] = useState("")
   const [partVal, setPartVal] = useState("")
   // ways to pay follow the country pack; Payment Link is the gateway, anywhere
   const loc = useLocale()
@@ -242,6 +293,15 @@ export default function FolioView() {
   useEffect(() => {
     loadLocale().then((l) => setRates(l.tax_rates))
   }, [])
+  // the rate the server will put on this charge when it is food & beverage
+  // (same words and rate as kamra.api._resolve_charge_gst); null = the
+  // picked rate applies
+  const fnbWords = loc.fnb_charge_words ?? []
+  const chargeText = `${charge.charge_type} ${charge.description}`.toLowerCase()
+  const fixedRate: number | null =
+    !charge.is_alcohol && loc.fnb_tax_rate != null && fnbWords.some((w) => chargeText.includes(w))
+      ? Number(loc.fnb_tax_rate)
+      : null
 
   /** Params helper kept for call sites; unlock happens in act(). */
   const withPin = (params: Record<string, unknown>) => params
@@ -344,7 +404,7 @@ export default function FolioView() {
               })}
             </div>
           )}
-          {open && folio.balance > 0 && (
+          {open && folio.balance > 0 && loc.integrations.payment_gateways.length > 0 && (
             <Button
               variant="outline"
               disabled={busy}
@@ -357,15 +417,13 @@ export default function FolioView() {
                   navigator.clipboard.writeText(r.url)
                 })
               }
-              title={`Creates a payment link for the balance and copies it - send to the ${
-                data.stay.contact_preference === "Booker" &&
+              title={translate("Creates a payment link for the balance and copies it - send to the {v0}", { v0: String(data.stay.contact_preference === "Booker" &&
                 data.stay.booked_by_name
                   ? `booker, ${data.stay.booked_by_name}${data.stay.booked_by_phone ? ` (${data.stay.booked_by_phone})` : ""}`
                   : data.stay.contact_preference === "Both" &&
                       data.stay.booked_by_name
                     ? `guest and the booker (${data.stay.booked_by_name})`
-                    : "guest"
-              }`}
+                    : "guest") })}
             >
               {t("Payment link")}
             </Button>
@@ -450,7 +508,7 @@ export default function FolioView() {
               <Button
                 variant="outline"
                 disabled={busy}
-                title="Interim invoice: freeze this paid folio and keep the stay running on a fresh one - for long stays settled every few days"
+                title={translate("Interim invoice: freeze this paid folio and keep the stay running on a fresh one - for long stays settled every few days")}
                 onClick={() =>
                   act(async () => {
                     const r = await call<{ new_folio: string }>(
@@ -526,7 +584,7 @@ export default function FolioView() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm print:hidden">
           <span className="text-zinc-600">
             {pinStatus.unlocked
-              ? t("Cashier unlocked — money actions are open for 15 minutes.")
+              ? t("Cashier unlocked - money actions are open for {n} minutes.", { n: pinStatus.unlock_minutes ?? 15 })
               : pinStatus.must_reset || !pinStatus.has_pin
                 ? t("Set your cashier PIN to post payments and settle folios.")
                 : t("Cashier PIN required for money actions.")}
@@ -544,7 +602,7 @@ export default function FolioView() {
       ) : null}
       {error && (
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 print:hidden">
-          {error}
+          {translate(error)}
         </div>
       )}
 
@@ -560,7 +618,7 @@ export default function FolioView() {
                   : "border border-dashed border-amber-400 bg-amber-50 text-amber-700")
               }
             >
-              {doc?.title ?? (folio.invoice_number ? t("Tax Invoice") : t("Provisional Bill"))}
+              {translate(doc?.title) ?? (folio.invoice_number ? t("Tax Invoice") : t("Provisional Bill"))}
               {doc?.title_local && (
                 <>
                   <span aria-hidden className="mx-2 opacity-50">·</span>
@@ -595,7 +653,7 @@ export default function FolioView() {
                 <p className="text-sm text-zinc-500">
                   {property.gstin && (
                     <>
-                      {property.tax_id_label ?? "GSTIN"}:{" "}
+                      {property.tax_id_label ?? translate("GSTIN")}:{" "}
                       <span className="font-medium">{property.gstin}</span>{" "}
                       ·{" "}
                     </>
@@ -618,7 +676,7 @@ export default function FolioView() {
               )}
               {!doc?.is_final && (
                 <p className="mt-1 max-w-52 text-xs text-amber-700">
-                  {t("Not a tax invoice yet — the number is issued when the folio is settled.")}
+                  {t("Not a tax invoice yet - the number is issued when the folio is settled.")}
                 </p>
               )}
               <Badge tone={open ? "amber" : "green"}>{t(folio.status)}</Badge>
@@ -630,7 +688,10 @@ export default function FolioView() {
               <span className="text-zinc-500">{t("Bill to")}: </span>
               <span className="font-medium">{data.bill_to.name}</span>
               {data.bill_to.gstin && (
-                <span className="text-zinc-500"> · GSTIN {data.bill_to.gstin}</span>
+                <span className="text-zinc-500">{translate(" · GSTIN ")}{data.bill_to.gstin}</span>
+              )}
+              {data.bill_to.gstin && loc.integrations.verify_tax_id && (
+                <VerifyTaxId taxId={data.bill_to.gstin} name={data.bill_to.name} />
               )}
             </div>
           )}
@@ -647,7 +708,7 @@ export default function FolioView() {
               )}
             </Fact>
             <Fact label={t("Room")}>
-              {stay.room ? stay.room.split("-").pop() : "—"}
+              {stay.room ? stay.room.split("-").pop() : "-"}
               {stay.room_type && (
                 <span className="text-zinc-500">
                   {" "}
@@ -662,7 +723,7 @@ export default function FolioView() {
               })}
             </Fact>
             <Fact label={t("Pax / plan")}>
-              {stay.pax || stay.adults || "—"}
+              {stay.pax || stay.adults || "-"}
               {stay.children ? ` (${stay.adults}+${stay.children})` : ""}
               {stay.meal_plan && (
                 <span className="text-zinc-500">
@@ -673,9 +734,9 @@ export default function FolioView() {
             </Fact>
             {(stay.arrival || stay.departure) && (
               <Fact label={t("In / out")}>
-                {(stay.arrival ?? "").slice(0, 16).replace("T", " ") || "—"}
+                {(stay.arrival ?? "").slice(0, 16).replace("T", " ") || "-"}
                 {" → "}
-                {(stay.departure ?? "").slice(0, 16).replace("T", " ") || "—"}
+                {(stay.departure ?? "").slice(0, 16).replace("T", " ") || "-"}
               </Fact>
             )}
             {data.guest?.guest_id && (
@@ -786,13 +847,13 @@ export default function FolioView() {
                             <span>· {t("move only")}</span>
                             <input
                               className="w-24 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs"
-                              aria-label={t("Part to move (percent, or {cur} before GST)", { cur: cur() })}
+                              aria-label={t("Part to move (percent, or {cur} before {tax})", { cur: cur(), tax: taxLabel() })}
                               placeholder={t("30% or 1500")}
                               value={partVal}
                               onChange={(e) => setPartVal(e.target.value)}
                             />
                             <span className="text-zinc-400">
-                              ({cur()} = {t("before GST")})
+                              ({cur()} = {t("before {tax}", { tax: taxLabel() })})
                             </span>
                           </span>
                         )}
@@ -808,9 +869,10 @@ export default function FolioView() {
                       </div>
                       {partBad && (
                         <p className="mt-1.5 text-xs text-rose-600">
-                          {t("Enter 1–99%, or a {cur} amount under the line's {cur}{amount} (before GST).", {
+                          {t("Enter 1-99%, or a {cur} amount under the line's {cur}{amount} (before {tax}).", {
                             cur: cur(),
                             amount: inr(one!.amount),
+                            tax: taxLabel(),
                           })}
                         </p>
                       )}
@@ -901,7 +963,7 @@ export default function FolioView() {
                           )}
                           <td className="py-2 pr-3 text-zinc-500">{c.posting_date}</td>
                           <td className="py-2 pr-3">
-                            <span className="font-medium">{c.charge_type}</span>
+                            <span className="font-medium">{translate(c.charge_type)}</span>
                             {c.description && (
                               <span className="text-zinc-500"> - {c.description}</span>
                             )}
@@ -918,14 +980,25 @@ export default function FolioView() {
                               {c.charge_type !== "Allowance" &&
                                 (voidFor === c.name ? (
                                   <span className="mr-1.5 inline-flex items-center gap-1">
+                                    <input
+                                      className={`${inputCls} w-52`}
+                                      placeholder={t("Reason (required - goes on the record)")}
+                                      value={voidReason}
+                                      onChange={(e) => setVoidReason(e.target.value)}
+                                    />
                                     <button
-                                      className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100"
-                                      disabled={busy}
+                                      className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                                      disabled={busy || !voidReason.trim()}
                                       onClick={() =>
                                         act(async () => {
                                           await call("kamra.api.void_folio_charge",
-                                            withPin({ folio: folio.name, charge_row: c.name }))
+                                            withPin({
+                                              folio: folio.name,
+                                              charge_row: c.name,
+                                              reason: voidReason.trim(),
+                                            }))
                                           setVoidFor(null)
+                                          setVoidReason("")
                                         })
                                       }
                                     >
@@ -933,7 +1006,10 @@ export default function FolioView() {
                                     </button>
                                     <button
                                       className="text-xs text-zinc-400 hover:text-zinc-700"
-                                      onClick={() => setVoidFor(null)}
+                                      onClick={() => {
+                                        setVoidFor(null)
+                                        setVoidReason("")
+                                      }}
                                     >
                                       {t("Cancel")}
                                     </button>
@@ -942,7 +1018,10 @@ export default function FolioView() {
                                   <button
                                     aria-label={t("Void this charge")}
                                     className="mr-1.5 inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-500 hover:border-rose-400 hover:text-rose-700"
-                                    onClick={() => setVoidFor(c.name)}
+                                    onClick={() => {
+                                      setVoidFor(c.name)
+                                      setVoidReason("")
+                                    }}
                                   >
                                     <Trash2 className="size-3" aria-hidden />
                                     {t("Void")}
@@ -1050,7 +1129,7 @@ export default function FolioView() {
               {data.statutory && (
                 <div className="flex items-center justify-end gap-3 pt-2">
                   <div className="text-right text-[10px] leading-tight text-zinc-400">
-                    <p>ZATCA · ICV {data.statutory.icv}</p>
+                    <p>{translate("ZATCA · ICV ")}{data.statutory.icv}</p>
                     <p className="font-mono">{data.statutory.uuid}</p>
                   </div>
                   <img
@@ -1084,7 +1163,7 @@ export default function FolioView() {
                 {folio.payments.map((p, i) => (
                   <li key={i} className="flex justify-between py-1.5">
                     <span>
-                      {p.posting_date} · {p.mode}
+                      {p.posting_date} · {translate(p.mode)}
                       {p.payment_kind && p.payment_kind !== "Payment" && (
                         <span className={"ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold " +
                           (p.payment_kind === "Refund" ? "bg-rose-50 text-rose-600"
@@ -1103,13 +1182,13 @@ export default function FolioView() {
               </ul>
               {refund ? (
                 <div className="mt-2 flex flex-wrap items-end gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2">
-                  <input className={`${inputCls} w-24`} type="number" placeholder={cur()}
+                  <input className={`${inputCls} w-24`} type="number" placeholder={translate(cur())}
                     value={refund.amount} onChange={(e) => setRefund({ ...refund, amount: e.target.value })} />
                   <select className={inputCls} value={refund.mode}
                     onChange={(e) => setRefund({ ...refund, mode: e.target.value })}>
-                    {PAY_MODES.map((m) => <option key={m}>{m}</option>)}
+                    {PAY_MODES.map((m) => <option key={m} value={m}>{translate(m)}</option>)}
                   </select>
-                  <input className={`${inputCls} flex-1`} placeholder={t("Reason (required — e.g. deposit returned)")}
+                  <input className={`${inputCls} flex-1`} placeholder={t("Reason (required - e.g. deposit returned)")}
                     value={refund.reason} onChange={(e) => setRefund({ ...refund, reason: e.target.value })} />
                   <Button variant="outline" className="text-rose-600" disabled={busy || !refund.amount || !refund.reason.trim()}
                     onClick={() => act(async () => {
@@ -1184,23 +1263,37 @@ export default function FolioView() {
               <input
                 className={`${inputCls} w-24`}
                 type="number"
-                placeholder={`${cur()}`}
+                placeholder={translate(`${cur()}`)}
                 value={charge.amount}
                 onChange={(e) => setCharge({ ...charge, amount: e.target.value })}
               />
-              <select
-                className={inputCls}
-                value={charge.gst_rate}
-                onChange={(e) =>
-                  setCharge({ ...charge, gst_rate: e.target.value })
-                }
-              >
-                {rates.map((n) => String(n)).map((r) => (
-                  <option key={r} value={r}>
-                    {t("GST {rate}%", { rate: r })}
-                  </option>
-                ))}
-              </select>
+              {fixedRate !== null ? (
+                /* the server taxes food & beverage at the pack's F&B rate
+                   whatever is picked (_resolve_charge_gst) - show that rate
+                   rather than offer a choice that would be ignored */
+                <span
+                  className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm text-zinc-600"
+                  title={t("Food & beverage is taxed at the property's F&B rate.")}
+                >
+                  {t("{tax} {rate}%", { tax: taxLabel(), rate: fixedRate })}
+                  <span className="ml-1 text-xs text-zinc-400">{t("(F&B rate)")}</span>
+                </span>
+              ) : (
+                <select
+                  className={inputCls}
+                  aria-label={t("{tax} rate", { tax: taxLabel() })}
+                  value={charge.gst_rate}
+                  onChange={(e) =>
+                    setCharge({ ...charge, gst_rate: e.target.value })
+                  }
+                >
+                  {rates.map((n) => String(n)).map((r) => (
+                    <option key={r} value={r}>
+                      {t("{tax} {rate}%", { tax: taxLabel(), rate: r })}
+                    </option>
+                  ))}
+                </select>
+              )}
               <label className="flex items-center gap-1.5 text-sm text-zinc-600">
                 <input
                   type="checkbox"
@@ -1220,7 +1313,9 @@ export default function FolioView() {
                       folio: folio.name,
                       ...charge,
                       amount: Number(charge.amount),
-                      gst_rate: Number(charge.gst_rate),
+                      gst_rate: fixedRate !== null && rates.includes(fixedRate)
+                        ? fixedRate
+                        : Number(charge.gst_rate),
                       is_alcohol: charge.is_alcohol ? 1 : 0,
                     }),
                   )
@@ -1239,7 +1334,7 @@ export default function FolioView() {
                   <input
                     className={`${inputCls} w-24`}
                     type="number"
-                    placeholder={`${cur()}`}
+                    placeholder={translate(`${cur()}`)}
                     value={allowance.amount}
                     onChange={(e) =>
                       setAllowance({ ...allowance, amount: e.target.value })
@@ -1254,7 +1349,7 @@ export default function FolioView() {
                   >
                     {rates.map((n) => String(n)).map((r) => (
                       <option key={r} value={r}>
-                        GST {r}%
+                        {t("{tax} {rate}%", { tax: taxLabel(), rate: r })}
                       </option>
                     ))}
                   </select>
@@ -1315,7 +1410,7 @@ export default function FolioView() {
               <input
                 className={`${inputCls} w-28`}
                 type="number"
-                placeholder={`${cur()}`}
+                placeholder={translate(`${cur()}`)}
                 value={payment.amount}
                 onChange={(e) =>
                   setPayment({ ...payment, amount: e.target.value })

@@ -3,9 +3,10 @@ import { useEffect, useState } from "react"
 import { login } from "../lib/api"
 import { asset } from "../lib/asset"
 import { Button } from "../components/ui/button"
-import { getSiteInfo } from "../lib/siteInfo"
+import { getSiteInfo, versionLabel } from "../lib/siteInfo"
 import { LANGS, getLang, setLang, type Lang } from "../lib/dir"
-import { useT } from "../lib/i18n"
+import { useT, t as translate } from "../lib/i18n"
+
 
 const inputCls =
   "w-full rounded border border-[#E2E8F0] bg-[#ffffff] px-3 py-2 text-sm " +
@@ -39,7 +40,7 @@ export default function Login(props: { onSuccess: () => void }) {
   useEffect(() => {
     getSiteInfo().then((info) => {
       setDemoMode(Boolean(info.demo_mode))
-      setVersion(info.version ?? null)
+      setVersion(versionLabel(info))
     })
   }, [])
 
@@ -143,7 +144,7 @@ export default function Login(props: { onSuccess: () => void }) {
 
           {error && (
             <div className="rounded border border-[#ffdad6] bg-[#fff8f7] px-3 py-2 text-sm text-[#93000a]">
-              {error}
+              {translate(error)}
             </div>
           )}
 

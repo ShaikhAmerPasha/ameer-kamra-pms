@@ -26,12 +26,18 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      - run: npm run i18n:check
+        working-directory: frontend
       - run: npm run build
         working-directory: frontend
       - name: Verify production serve base
         # The served SPA must reference its assets under /assets/kamra/frontend/;
         # a wrong base here silently breaks the /kamra install.
         run: grep -q "/assets/kamra/frontend/assets/" kamra/public/frontend/index.html
+
+      - name: Check international phone handling
+        run: npm run phone:check
+        working-directory: frontend
 
   evals:
     name: Backend eval harness
@@ -113,6 +119,17 @@ jobs:
           bench --site test.localhost run-tests --module kamra.tests.test_banquet \
             2>&1 | tee banquet.out
           grep -qE "^OK$" banquet.out
+
+      - name: Run the night audit, ledger and scheduled-audit unit tests
+        run: |
+          cd frappe-bench
+          for m in test_night_audit test_ledger_audit test_folio_leaks test_bill_settlement test_health test_scheduled_jobs test_golive test_credit_control test_webhooks test_pos_interface test_mcp test_seed_history; do
+            bench --site test.localhost run-tests --module kamra.tests.$m \
+              2>&1 | tee "$m.out"
+            # known bugs are pinned as expected failures and a few tests skip
+            # by design, so OK may carry those counts
+            grep -qE "^OK( \(((expected failures|skipped)=[0-9]+(, )?)+\))?$" "$m.out" || exit 1
+          done
 
       - name: Run front-desk persona journey
         run: |

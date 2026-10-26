@@ -10,7 +10,7 @@ import { Button } from "../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { cn } from "../lib/utils"
 import { cur } from "../lib/money"
-import { useT } from "../lib/i18n"
+import { useT, t as translate, useUILanguage } from "../lib/i18n"
 import {
   ExpressToggle,
   inr,
@@ -24,10 +24,11 @@ import {
   type Room,
 } from "./laundry/shared"
 
+
 /** Desktop home for the full laundry module: the operational board (pickup →
  * collect → process → deliver + cancel), the price menu (rate card) and a
- * billing view. Reuses kamra.laundry.* — the same backend the /hk phone app
- * drives — so the two stay in lockstep. */
+ * billing view. Reuses kamra.laundry.* - the same backend the /hk phone app
+ * drives - so the two stay in lockstep. */
 
 const OPERATOR_ROLES = [
   "Housekeeping",
@@ -328,7 +329,7 @@ export default function Laundry() {
   }) => (
     <div className="flex min-w-0 flex-col gap-3">
       <p className="px-1 text-sm font-medium text-zinc-500">
-        {title} ({orders.length})
+        {translate(title)} ({orders.length})
       </p>
       <ul className="space-y-3">
         {orders.map((o) => (
@@ -336,7 +337,7 @@ export default function Laundry() {
         ))}
         {orders.length === 0 && (
           <li className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-400">
-            {empty}
+            {translate(empty)}
           </li>
         )}
       </ul>
@@ -352,7 +353,7 @@ export default function Laundry() {
             {t("Laundry")}
           </h1>
           <p className="text-sm text-zinc-400">
-            {t("Guest laundry — pickup, processing, return and billing.")}
+            {t("Guest laundry - pickup, processing, return and billing.")}
           </p>
         </div>
         {tab === "board" && canOperate && (
@@ -409,14 +410,14 @@ export default function Laundry() {
             )}
             onClick={() => setTab(id)}
           >
-            {label}
+            {translate(label)}
           </button>
         ))}
       </div>
 
       {error && (
         <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {error}
+          {translate(error)}
         </p>
       )}
 
@@ -564,7 +565,7 @@ export default function Laundry() {
                           setCounting({ ...counting, comp: e.target.checked })
                         }
                       />
-                      {t("Complimentary — don't bill the guest")}
+                      {t("Complimentary (don't bill the guest)")}
                     </label>
                   </>
                 ) : (
@@ -602,7 +603,7 @@ export default function Laundry() {
                         {r.item_name}
                       </p>
                       <p className="text-xs text-zinc-400">
-                        {r.service_type} · {cur()}{inr(price)}
+                        {translate(r.service_type)} · {cur()}{inr(price)}
                       </p>
                     </div>
                     <Stepper
@@ -628,7 +629,7 @@ export default function Laundry() {
               })}
               {rates.length === 0 && (
                 <p className="py-4 text-center text-sm text-zinc-400">
-                  {t("No rate card yet — add laundry rates in the Price menu tab.")}
+                  {t("No rate card yet - add laundry rates in the Price menu tab.")}
                 </p>
               )}
             </div>
@@ -682,7 +683,7 @@ export default function Laundry() {
                         {it.item_name}
                       </p>
                       <p className="text-xs text-zinc-400">
-                        {it.service_type} · {t("collected {n}", { n: it.qty })}
+                        {translate(it.service_type)} · {t("collected {n}", { n: it.qty })}
                       </p>
                     </div>
                     <Stepper
@@ -714,7 +715,7 @@ export default function Laundry() {
             {returnPending > 0 && (
               <input
                 className="w-full rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-sm"
-                placeholder={t("{n} piece(s) short — why? (required)", { n: returnPending })}
+                placeholder={t("{n} piece(s) short - why? (required)", { n: returnPending })}
                 value={returning.note}
                 onChange={(e) =>
                   setReturning({ ...returning, note: e.target.value })
@@ -728,7 +729,7 @@ export default function Laundry() {
       {/* cancel drawer */}
       {cancelling && (
         <Sheet
-          title={t("Cancel laundry — room {room}", { room: cancelling.order.room_no })}
+          title={t("Cancel laundry - room {room}", { room: cancelling.order.room_no })}
           onClose={() => setCancelling(null)}
           footer={
             <Button
@@ -743,7 +744,7 @@ export default function Laundry() {
         >
           <div className="space-y-3">
             <p className="text-sm text-zinc-500">
-              {t("This closes the bag without billing. Tell us why — it's recorded on the order.")}
+              {t("This closes the bag without billing. Tell us why - it's recorded on the order.")}
             </p>
             <input
               className={inputCls}
@@ -865,7 +866,7 @@ function Stepper({
   )
 }
 
-/** The price menu (rate card) — read-only for viewers, editable for
+/** The price menu (rate card) - read-only for viewers, editable for
  * Front Desk / Finance. Adapted from Settings' LaundryRatesCard. */
 function PriceMenu({
   rates,
@@ -913,7 +914,7 @@ function PriceMenu({
         <div>
           <CardTitle>{t("Laundry rate card")}</CardTitle>
           <p className="mt-0.5 text-xs text-zinc-400">
-            {t("Per-item prices the app quotes and bills from. Blank express = 1.5× the normal rate.")}
+            {t("Per-item prices the app quotes and bills from. A blank express price uses the multiplier in Settings → Housekeeping.")}
           </p>
         </div>
         {canEdit && (
@@ -930,7 +931,7 @@ function PriceMenu({
       <CardContent>
         {err && (
           <p className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {err}
+            {translate(err)}
           </p>
         )}
         {form && (
@@ -948,7 +949,7 @@ function PriceMenu({
               onChange={(e) => setForm({ ...form, service: e.target.value })}
             >
               {LAUNDRY_SERVICES.map((s) => (
-                <option key={s}>{s}</option>
+                <option key={s} value={s}>{translate(s)}</option>
               ))}
             </select>
             <input
@@ -983,7 +984,7 @@ function PriceMenu({
         {rates.length === 0 ? (
           <p className="py-3 text-sm text-zinc-400">
             {t("No rates yet{hint}", {
-              hint: canEdit ? t(" — add the first item.") : ".",
+              hint: canEdit ? t(" - add the first item.") : ".",
             })}
           </p>
         ) : (
@@ -1001,7 +1002,7 @@ function PriceMenu({
               {rates.map((r) => (
                 <tr key={r.name} className="border-t border-zinc-100">
                   <td className="py-1.5 font-medium">{r.item_name}</td>
-                  <td className="text-zinc-500">{r.service_type}</td>
+                  <td className="text-zinc-500">{translate(r.service_type)}</td>
                   <td className="text-right tabular-nums">{cur()}{inr(r.rate)}</td>
                   <td className="text-right tabular-nums text-zinc-500">
                     {cur()}{inr(r.express_rate)}
@@ -1056,7 +1057,7 @@ interface Revenue {
   by_service: { service_type: string; pieces: number; revenue: number }[]
 }
 
-/** Billing view — a revenue rollup plus the recent orders and whether each
+/** Billing view - a revenue rollup plus the recent orders and whether each
  * charge posted to the folio. */
 function Billing({
   recent,
@@ -1113,7 +1114,7 @@ function Billing({
                       key={s.service_type}
                       className="border-t border-zinc-100"
                     >
-                      <td className="py-1.5">{s.service_type}</td>
+                      <td className="py-1.5">{translate(s.service_type)}</td>
                       <td className="text-right tabular-nums">{s.pieces}</td>
                       <td className="text-right tabular-nums">
                         {cur()}{inr(s.revenue)}
@@ -1153,7 +1154,7 @@ function Billing({
                     {o.shortage_note && (
                       <span
                         className="ml-1 text-rose-500"
-                        title={o.shortage_note}
+                        title={translate(o.shortage_note)}
                       >
                         !
                       </span>
@@ -1162,7 +1163,7 @@ function Billing({
                   <td className="text-zinc-500">{o.guest_name || o.name}</td>
                   <td className="text-right tabular-nums">{o.pieces}</td>
                   <td className="text-right tabular-nums">
-                    {o.total > 0 ? `${cur()}${inr(o.total)}` : "—"}
+                    {o.total > 0 ? `${cur()}${inr(o.total)}` : "-"}
                   </td>
                   <td>
                     <Badge tone={STATUS_TONE[o.status] || "zinc"}>
@@ -1171,7 +1172,7 @@ function Billing({
                   </td>
                   <td>
                     {o.status !== "Delivered" ? (
-                      <span className="text-xs text-zinc-400">—</span>
+                      <span className="text-xs text-zinc-400"> - </span>
                     ) : o.posted_to_folio ? (
                       <span className="text-xs font-medium text-emerald-700">
                         {t("Posted")}
@@ -1200,9 +1201,10 @@ function Billing({
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
+  useUILanguage()
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-3">
-      <p className="text-xs text-zinc-400">{label}</p>
+      <p className="text-xs text-zinc-400">{translate(label)}</p>
       <p className="mt-0.5 text-lg font-semibold tabular-nums">{value}</p>
     </div>
   )

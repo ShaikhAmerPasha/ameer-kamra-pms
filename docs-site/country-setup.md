@@ -8,7 +8,7 @@ create the property selects its *localization pack*, and the pack decides:
 | Money | currency, number format, tax name (GST, VAT, SST, PB1…) and the tax-ID label on invoices |
 | Front desk | the **ID documents** the desk and guest self check-in accept, the **ways to pay** offered at the counter, POS and till |
 | Levies | the name of the per-night room levy (e.g. *Municipality fee*) |
-| Guests | the default nationality, and the data-protection authority named in the privacy notice |
+| Guests | the default nationality, the data-protection authority named in the privacy notice, the languages that notice is offered in (India: Hindi, Kannada, Tamil, Telugu, Malayalam, Marathi, Bengali), and whether a child's ID is kept (by default only for foreign nationals; Saudi Arabia: always, for Shomoos) |
 | Invoices | the invoice title and, where the law requires it, e-invoicing (Saudi Arabia: ZATCA) |
 
 Packs today: **India, Indonesia, Malaysia, Saudi Arabia, Thailand, United
@@ -34,9 +34,38 @@ currency you enter.
 | Malaysia | MyKad, Passport, Driving License | Cash, Card, Bank Transfer |
 | Other | Passport, National ID, Driving License | Cash, Card, Bank Transfer |
 
+## Integrations each pack brings
+
+Some integrations only make sense in one country, so they come with that
+country's pack. A property in another country does not see them: the
+buttons are hidden and the API refuses the call.
+
+| Country | Online payment links | Tax return export | Statutory reporting |
+| --- | --- | --- | --- |
+| India | Razorpay, Cashfree | GSTR-1 (`gstr1_rows`) | Form C for foreign nationals (named in the privacy notice) |
+| Saudi Arabia | - | - | ZATCA e-invoicing (below); Shomoos guest registration (named in the privacy notice) |
+| Indonesia, Malaysia, Thailand, UAE, Other | - | - | - |
+
+### India: payment links
+
+*Settings → Payments*. Pick **Razorpay** or **Cashfree** and enter that
+gateway's keys from your own account, so money is paid straight to the
+property. *Test mode* creates links that charge nothing, for training.
+
+- **Razorpay**: add a webhook for the `payment_link.paid` event pointing to
+  `https://<your-site>/api/method/kamra.payments.razorpay_webhook`, and enter
+  the same webhook secret in Kamra.
+- **Cashfree**: nothing to set up in Cashfree. Every link tells Cashfree to
+  report back to `https://<your-site>/api/method/kamra.payments.cashfree_webhook`,
+  signed with your secret key. The guest needs a mobile number on their
+  profile to receive a Cashfree link.
+
+Every payment confirmation is signature-checked, in test mode too. A paid
+link posts to the bill once, however often the gateway retries.
+
 ## Room levy (municipality fee, city tax)
 
-*Settings → Stay, tax & privacy*: **Room levy name**, **Room levy %** and
+*Settings → Finance → Fees & levies*: **Room levy name**, **Room levy %** and
 whether tax applies to it. When the % is above zero the levy is included in
 every quote and posted as its own line with each room night, so the invoice
 shows it and the ledger books it apart from room revenue. Saudi Arabia and
@@ -45,15 +74,15 @@ municipality charges.
 
 ## Saudi Arabia: ZATCA e-invoicing
 
-### What Kamra does (Phase 1 — generation)
+### What Kamra does (Phase 1 - generation)
 
 For every **invoice** (a settled folio), **credit note** (a cancelled
-invoice — ZATCA does not allow deleting one) and **paid restaurant bill**,
+invoice - ZATCA does not allow deleting one) and **paid restaurant bill**,
 Kamra creates a *ZATCA Invoice* record with:
 
 - a UUID and the property's invoice counter (**ICV**), and the previous
   invoice's hash (**PIH**), so every document is chained to the one before;
-- the **UBL 2.1 XML** — *simplified* for guests, *standard* (B2B) when the
+- the **UBL 2.1 XML** - *simplified* for guests, *standard* (B2B) when the
   bill goes to a company with a VAT number;
 - the **ZATCA invoice hash**;
 - the **QR code** (seller name, VAT number, time, total, VAT), printed on
@@ -71,14 +100,14 @@ API (`zatca_invoice_xml`).
    creates it from the property on first use. Fill in the details exactly
    as registered: seller name, Commercial Registration (CRN), building
    number (4 digits), street, district, city, postal code (5 digits).
-3. The banner at the top turns green — *ZATCA Phase 1 ready* — when
+3. The banner at the top turns green - *ZATCA Phase 1 ready* - when
    nothing is missing. It also shows how many documents have been issued
    and the last ICV.
 
 Closing a bill never waits on ZATCA: if a record cannot be generated the
 error is logged and the desk carries on.
 
-### Phase 2 (integration) — what is still to come
+### Phase 2 (integration) - what is still to come
 
 The XML, hash chain and settings (environment, EGS serial, CSID, private
 key) are in place. Still to build before a property in a Phase 2 wave can
