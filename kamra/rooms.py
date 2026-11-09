@@ -19,6 +19,7 @@ from frappe.utils import add_days, cint, date_diff, get_datetime, getdate, nowda
 
 from kamra.api import HK_SUPERVISOR, _is_room_supervisor, _stay_balances
 from kamra.authz import ADMIN, assert_property_access, require_roles
+from kamra.floors import floors_for
 
 # who may look at rooms: the desk, housekeeping supervisors, night audit,
 # revenue, and the agent. Admins always pass.
@@ -152,6 +153,8 @@ def rooms_board(property: str):
 		"rooms": rooms,
 		"room_types": [{"name": k, "room_type_name": v} for k, v in
 		               sorted(rt_names.items(), key=lambda kv: kv[1] or "")],
+		# the Floor master's order (name, sort_order); rooms[].floor is unchanged
+		"floors": floors_for(property),
 		"can": _permissions(),
 	}
 
@@ -345,7 +348,7 @@ def _posted_room_revenue(reservations: list) -> dict:
 		       COALESCE(SUM(fc.amount), 0) AS amount
 		FROM `tabFolio Charge` fc
 		JOIN `tabFolio` f ON fc.parent = f.name
-		WHERE fc.charge_type = 'Room'
+		WHERE fc.charge_type IN ('Room', 'Rate Adjustment')
 		  AND COALESCE(fc.reservation, f.reservation) IN %(names)s
 		GROUP BY res
 		""", {"names": tuple(reservations)}, as_dict=True)
@@ -578,7 +581,8 @@ def _compute_insights(property: str, days: int, today, money: bool,
 				FROM `tabFolio Charge` fc
 				JOIN `tabFolio` f ON fc.parent = f.name
 				JOIN `tabReservation` r ON r.name = COALESCE(fc.reservation, f.reservation)
-				WHERE f.property = %(p)s AND fc.charge_type = 'Room'
+				WHERE f.property = %(p)s
+				  AND fc.charge_type IN ('Room', 'Rate Adjustment')
 				  AND fc.posting_date >= %(start)s AND fc.posting_date < %(end)s
 				GROUP BY r.room
 				""", {"p": property, "start": start, "end": end}, as_dict=True):

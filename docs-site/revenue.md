@@ -6,7 +6,7 @@ owner's rate guardrails and demand pricing, plus the companies and travel
 agents who sell your rooms. Revenue Managers and Hotel Admins see it.
 **Room Types** is in the Revenue app and in the Admin app.
 
-![The Seasons list: a year-end peak at +25% and a monsoon saver at -400 on Standard rooms](/img/revenue/seasons.png)
+![The Seasons list: the sample hotel's seasons, among them a year-end peak at +25% and a monsoon saver at -400 on Standard rooms](/img/revenue/seasons.png)
 
 ## How Kamra works out a price
 
@@ -26,10 +26,13 @@ model ever calculates money. For each night of a stay:
 
 Then, for the whole stay:
 
-4. **Rate plan.** Its modifier works on the stay's room total.
-5. **Meal plan.** Price per adult and per child, per night.
-6. **Voucher.** Comes off the room and meal total.
-7. **Fees and tax.** Cleaning fee, pets, room levy, then tax. Tax rates
+4. **Long-stay discount.** A stay long enough for a
+   [long-stay discount](#give-a-long-stay-discount) takes its percentage
+   off each night, never below that night's guardrail floor.
+5. **Rate plan.** Its modifier works on the stay's room total.
+6. **Meal plan.** Price per adult and per child, per night.
+7. **Voucher.** Comes off the room and meal total.
+8. **Fees and tax.** Cleaning fee, pets, room levy, then tax. Tax rates
    and whether your prices include tax come from **Settings → Finance**
    and your [country pack](/country-setup).
 
@@ -59,7 +62,7 @@ the same code as the quote, so what you see is what is charged.
 1. Open **Revenue → Room Types** (or **Admin → Room Types**) and pick a
    room type, or click **New**.
 2. Set **Base price / night** and **Adults included in base price**.
-3. Set **Extra adult / night**, **Child / night** and, if you sell the
+3. Set **Extra adult / night**, **Extra child / night** and, if you sell the
    room to one person for less, **Single occupancy price**.
 4. Set **Max adults** and **Max children**. The booking page won't sell
    more guests than this.
@@ -67,7 +70,7 @@ the same code as the quote, so what you see is what is charged.
 
 ![The Room Types list with base price, base occupancy, extra adult price and tax rate](/img/revenue/room-types.png)
 
-![The Deluxe room type: name, code, listing slug, base price, adults included, single occupancy, extra adult and small-group fields](/img/revenue/room-type-form.png)
+![The Deluxe room type: name, code, listing slug and category, then the prices (base price, adults included, single occupancy, extra adult and child, Tax %) and the capacity fields together](/img/revenue/room-type-form.png)
 
 Two optional prices:
 
@@ -96,7 +99,14 @@ A season moves the nightly price between two dates.
 6. Optional: **Minimum nights** (shortest stay on these dates) and
    **Non-refundable** (a stay touching these dates can't be cancelled
    free of charge).
-7. Set a **Priority** and click **Save**.
+7. Optional: **Advance % at booking**: the advance a booking on these
+   dates owes, for example 100 over New Year and 25 in the monsoon. `0`
+   keeps the property's usual **Deposit expected at booking**. A stay that
+   crosses seasons owes the highest one. The desk's Deposit box, the
+   booking page (when it takes an advance online) and trips all use it.
+   To set an advance for dates without changing the price, make a season
+   with **Percent** `0`.
+8. Set a **Priority** and click **Save**.
 
 ![Filling in a new season: name, dates, Percent, 20, priority and minimum nights](/img/revenue/season-new.gif)
 
@@ -115,7 +125,7 @@ non-refundable, corporate.
 4. Optional: a **Cancellation policy** line, and **Default plan**.
 5. Click **Save**.
 
-![Three rate plans: Best Available Rate at 0%, Non-refundable at -10% and Corporate at -15%](/img/revenue/rate-plans.png)
+![The rate plans: Best Available Rate, Non-refundable, Corporate negotiated and an unpublished Package, each with its modifier](/img/revenue/rate-plans.png)
 
 A booking uses a rate plan when it names one. On the desk **New
 booking** form, pick it in **Rate plan**; **Standard rate (no plan)**
@@ -138,7 +148,7 @@ company's contract doesn't re-price it.
 5. Tick **Default** for the plan the desk booking form should start with.
 6. Click **Save**.
 
-![Two meal plans: CP bed and breakfast and MAP breakfast and dinner, priced per adult and per child per night](/img/revenue/meal-plans.png)
+![The meal plans: Room Only, Breakfast Included and Breakfast + Dinner, priced per adult and per child per night](/img/revenue/meal-plans.png)
 
 The booking page lists every meal plan, plus **Room only**.
 
@@ -152,11 +162,34 @@ The booking page lists every meal plan, plus **Room only**.
    **Max uses (0 = unlimited)**.
 5. Click **Save**.
 
-![Two vouchers: WELCOME500 for 500 off and STAYLONGER for 10% off stays of three nights or more](/img/revenue/vouchers.png)
+![The vouchers, among them WELCOME500 for 500 off and STAYLONGER for 10% off stays of three nights or more](/img/revenue/vouchers.png)
 
 Guests enter a voucher under **Have a code?** on the booking page; the
-desk enters it on the booking form. **Used** counts each booking that
-redeemed it.
+desk enters it on the booking form, or on an open folio under **Give a
+discount** (see [Billing](/billing#give-a-discount)). **Used** counts each
+booking or folio that redeemed it. **Max uses** 0 means a code can be used
+any number of times.
+
+## Give a long-stay discount
+
+Long stays can pay less per night without anyone typing a code.
+
+1. Open **Revenue → Long-stay Discounts → New**.
+2. Enter **Stays of at least (nights)** and the **Discount % off the room
+   rate**, for example `7` and `10`.
+3. Optional: a **Room type**. Blank applies to every room type.
+4. Click **Save**. Add more tiers the same way, for example 28 nights at
+   25%.
+
+A stay gets the highest tier it reaches: with 7 nights at 10% and 28
+nights at 25%, a 30-night stay gets 25%. At the same tier, a rule for the
+room type wins over a house-wide one. The discount comes off each room
+night before tax, so the quote, the booking's locked nightly rates and the
+folio all agree. The desk quote shows it as **Long stay N% off**. No night
+goes below its [guardrail](#set-the-floor-and-ceiling-guardrails) floor.
+It applies on the desk, the booking page and the API alike, stacks with a
+rate plan and a voucher, and is skipped when the desk agrees a rate by
+hand. Existing bookings keep their price.
 
 ## Add experiences
 
@@ -245,6 +278,22 @@ unassigned bookings may sell. `0` never oversells.
 (Travel Agent, OTA, Tour Operator, Corporate Desk) and **Commission %**.
 The desk picks the agent on the booking form, and Kamra works out the
 commission on that agent's bookings.
+
+## This year against last year
+
+The **Revenue Dashboard** (Finance, Revenue Manager, the night auditor and
+managers) has a **This year against last year** table. Pick **Today**,
+**Month to date**, **Year to date** or **Next 90 days**; each row shows
+occupancy, rooms sold, room revenue, total revenue, ADR and RevPAR for
+this year, for the same dates one year back, and the change in percent.
+
+- **Year to date** starts at the country pack's financial year: 1 April in
+  India, 1 January where the pack sets none.
+- **Next 90 days** compares rooms on the books (confirmed and in house)
+  with what actually sold on the same dates last year. Future revenue is
+  not shown: it is posted night by night.
+- Last year's figures come from posted folio charges, the same numbers as
+  the Manager's flash. **n/a** means nothing was sold last year.
 
 ## Settings
 

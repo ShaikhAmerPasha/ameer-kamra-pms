@@ -26,6 +26,217 @@ upgrade-breaking changes (removed doctypes / API contracts).
   quotation, desk-led guest response, department checklists + notify on
   Confirm (Sales/Finance/HK/F&B), and quote no-response chase reminders
 
+## [2.7.6](https://github.com/Kamra-PMS/kamra-pms/compare/v2.7.5...v2.7.6) (2026-11-06)
+
+
+### Features
+
+* **agent:** guided desk tasks, food orders and voice input ([6735d7c](https://github.com/Kamra-PMS/kamra-pms/commit/6735d7cf5035f394f8355b438d596583ad9b0181))
+* **agent:** reply in the picked language; voice waits for Send ([c73c208](https://github.com/Kamra-PMS/kamra-pms/commit/c73c2082899ad69bf942472ab29f70a73069cbce))
+* **invoice:** property invoice footer for CIN and bank details ([38ee9ba](https://github.com/Kamra-PMS/kamra-pms/commit/38ee9ba729187feb36183703ccb58b707c883168))
+* notification bell for each department ([#487](https://github.com/Kamra-PMS/kamra-pms/issues/487)) ([bbb9568](https://github.com/Kamra-PMS/kamra-pms/commit/bbb9568451cdb9e49b44ff0ee1cbb62ccc903119))
+* **rooms:** floors master, room type and floor filters, Unit kind label ([#461](https://github.com/Kamra-PMS/kamra-pms/issues/461)) ([e8e3205](https://github.com/Kamra-PMS/kamra-pms/commit/e8e320591338afd05558311caaf771a467a05ac5))
+* **ui:** language picker in the top bar; settings menu scrolls on its own ([46ca20d](https://github.com/Kamra-PMS/kamra-pms/commit/46ca20d2717a9597caa777d04d0be5e540f1de84))
+
+
+### Bug Fixes
+
+* close check-then-write races on bookings, credit, tills and stock ([#486](https://github.com/Kamra-PMS/kamra-pms/issues/486)) ([6c9f58e](https://github.com/Kamra-PMS/kamra-pms/commit/6c9f58edae52c879f7b93d02ce3a2e79b227b11a))
+* open tabs recover from a stale CSRF token after a sign-in elsewhere ([#480](https://github.com/Kamra-PMS/kamra-pms/issues/480)) ([d80b533](https://github.com/Kamra-PMS/kamra-pms/commit/d80b5331345c022745a7da933926a8ecd2898907)), closes [#467](https://github.com/Kamra-PMS/kamra-pms/issues/467)
+* read inbound phones with the property's country, never lose a booking over one ([#481](https://github.com/Kamra-PMS/kamra-pms/issues/481)) ([2de66c8](https://github.com/Kamra-PMS/kamra-pms/commit/2de66c8cf49cac3c09668e22050afb721994fa81))
+* room menu on Today closes on outside click, colour-coded statuses ([#479](https://github.com/Kamra-PMS/kamra-pms/issues/479)) ([8b31ab3](https://github.com/Kamra-PMS/kamra-pms/commit/8b31ab3ca3b87c4d93264fb4d06cab381fc91bef))
+* serialise bank deposits so one safe cannot be overdrawn ([#485](https://github.com/Kamra-PMS/kamra-pms/issues/485)) ([eaa0779](https://github.com/Kamra-PMS/kamra-pms/commit/eaa0779f3bd04baa069a149b0ba949eaa041f80f))
+
+## [2.7.5](https://github.com/Kamra-PMS/kamra-pms/compare/v2.7.4...v2.7.5) (2026-11-02)
+
+
+### Features
+
+* folio discounts, promo codes on folios, room import and night audit options ([#469](https://github.com/Kamra-PMS/kamra-pms/issues/469)) ([feb51fb](https://github.com/Kamra-PMS/kamra-pms/commit/feb51fb77418260fbb75e681ec3f652e846f67aa))
+  * **Give a discount** on the folio: a percent, an amount for the whole stay or per night, or a promo code. It comes off the room nights on the bill and goes through the allowance approval, so who may give one follows Settings, Finance, Cashier controls. Also on the check-out payment step.
+  * A refund goes out only when the guest is in credit, up to what is due back.
+  * **Import rooms** from a spreadsheet on Admin, Rooms. A room type's ID now follows its code.
+  * **Sells alcohol** (Settings, Property): off hides every alcohol field and label.
+  * Night audit can extend unchecked-out departures one night and post it; custom reports can be emailed **After night audit**.
+  * Clicking a room on the Today board opens a menu instead of changing its status straight away.
+
+
+### Bug Fixes
+
+* charge type sent in English, plain Invoice title, named floors as entered ([#472](https://github.com/Kamra-PMS/kamra-pms/issues/472)) ([d8be66b](https://github.com/Kamra-PMS/kamra-pms/commit/d8be66b085fcd889733faa7e428997f55595be62))
+  * Posting a charge, a ticket or a cancellation in another language sent the translated label and was refused; it now sends the English value. A settled bill says "Invoice" unless the country requires "Tax Invoice" (India, UAE, Thailand; Saudi Arabia keeps the ZATCA title).
+* **i18n:** standardize Brazilian Portuguese (pt-BR) hotel terminology and missing strings ([#454](https://github.com/Kamra-PMS/kamra-pms/issues/454)) ([65a8dd0](https://github.com/Kamra-PMS/kamra-pms/commit/65a8dd0bcb551700232c3ac27a6fbc1487df5b59))
+* untaxed bills print no tax columns; allowances read as Discount on the bill ([#475](https://github.com/Kamra-PMS/kamra-pms/issues/475)) ([01b3574](https://github.com/Kamra-PMS/kamra-pms/commit/01b357475a5d08cfca54606663d980c357b090e0))
+
+### Upgrade notes
+
+* One new option on Kamra Custom Report (schedule "After night audit"). It applies on the next `bench migrate`, which every update runs.
+
+## [2.7.4](https://github.com/Kamra-PMS/kamra-pms/compare/v2.7.3...v2.7.4) (2026-11-01)
+
+
+### Bug Fixes
+
+* **security:** keep Frappe's setup wizard shut on Kamra sites ([#462](https://github.com/Kamra-PMS/kamra-pms/issues/462)) ([900f0a4](https://github.com/Kamra-PMS/kamra-pms/commit/900f0a4cdadec29739227bbc5b44a0c10ee8f244))
+  * Frappe's own setup wizard is marked done on install and on every migrate, and its write endpoints need a System Manager. Kamra sites are set up in `/kamra`, so the wizard was never needed but could stay open on a new site. Upgrading is recommended for every site.
+
+### Documentation
+
+* Links to the re-released video course episodes 1 to 10 ([#460](https://github.com/Kamra-PMS/kamra-pms/pull/460))
+
+### Upgrade notes
+
+* No schema change. The fix applies itself on the next `bench migrate`, which every update runs.
+
+## [2.7.3](https://github.com/Kamra-PMS/kamra-pms/compare/v2.7.2...v2.7.3) (2026-11-01)
+
+
+### Bug Fixes
+
+* booking date crash, demo folios, group counts, money decimals ([#455](https://github.com/Kamra-PMS/kamra-pms/issues/455)) ([c25505f](https://github.com/Kamra-PMS/kamra-pms/commit/c25505f551876003422b7be216faa9b4dfa0510c))
+  * **booking:** the New booking dialog no longer crashes while a date is being typed; Tape Chart, Central Reservations and In House guard typed dates the same way
+  * **money:** every money figure shows the currency's own decimals (₹2,27,255.40, not ₹2,27,255.4), on finance screens, bills, check-out, deposits, allowances and POS
+  * **groups:** a group with no room blocks counts its booked rooms ("2 named of 3", not "of 0")
+  * **demo:** demo history puts past restaurant and laundry charges on the past stay, not on today's in-house guests
+
+### Documentation
+
+* Screenshots and pages re-shot for 2.7.2: receivables, payables, cash outlook, P&L, owner view, groups, tickets, night audit ([#453](https://github.com/Kamra-PMS/kamra-pms/pull/453))
+* A clearer README ([#452](https://github.com/Kamra-PMS/kamra-pms/pull/452))
+
+### Upgrade notes
+
+* No `bench migrate` needed.
+
+## [2.7.2](https://github.com/Kamra-PMS/kamra-pms/compare/v2.7.1...v2.7.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* SI call list leftovers, room screen names, room pricing, es/ar help ([#447](https://github.com/Kamra-PMS/kamra-pms/issues/447)) ([e9aa8aa](https://github.com/Kamra-PMS/kamra-pms/commit/e9aa8aa27539ca9e730b62811f6c197e657644ab))
+  * **front-desk:** the morning briefing and the Hotel Manager report pack no longer show occupancy or revenue to the front desk ([#445](https://github.com/Kamra-PMS/kamra-pms/pull/445))
+  * **assistant:** says plainly when the AI key is out of credit, with a link to its settings ([#445](https://github.com/Kamra-PMS/kamra-pms/pull/445))
+  * **billing:** company and group bills on a stay are named with their company; the Share button has its own wording ([#445](https://github.com/Kamra-PMS/kamra-pms/pull/445))
+  * **ui:** Room Board, Housekeeping Board and Admin Rooms, named by what they do ([#443](https://github.com/Kamra-PMS/kamra-pms/pull/443))
+  * **room-types:** pricing fields grouped, children on quote cards, Tax % instead of GST % ([#444](https://github.com/Kamra-PMS/kamra-pms/pull/444), @SandroG1977)
+  * **i18n:** Portuguese fixes (Mapa de quartos, crianças); Spanish and Arabic help pages match the current screens ([#446](https://github.com/Kamra-PMS/kamra-pms/pull/446))
+  * **quality:** the CodeQL code quality findings cleared ([#442](https://github.com/Kamra-PMS/kamra-pms/pull/442))
+
+### Upgrade notes
+
+* No `bench migrate` needed.
+
+### Thanks
+
+@SandroG1977 for this release.
+
+## [2.7.1](https://github.com/Kamra-PMS/kamra-pms/compare/v2.7.0...v2.7.1) (2026-10-31)
+
+
+### Features
+
+* groups, booking engine language and previews, co-branding ([#437](https://github.com/Kamra-PMS/kamra-pms/issues/437)) ([6110409](https://github.com/Kamra-PMS/kamra-pms/commit/611040964a012fee1157bf6b8f9e5c5fcffcdffd))
+  * **groups:** rooming-list booking with group rate, deposit and quotation; group rates price through the stay's agreed rate; changing a group's rate needs Revenue Manager or Hotel Admin; a guest's self check-in link never changes the price ([#422](https://github.com/Kamra-PMS/kamra-pms/pull/422), @Kruthikagowda12)
+  * **booking-engine:** link previews and search show the hotel's title, description and image; a booking engine language in Booking engine settings; a language dropdown; the booking page and the desk keep separate languages ([#435](https://github.com/Kamra-PMS/kamra-pms/pull/435))
+  * **assistant:** quotes with the exact guests and dates and gives the total payable; booking from a quote keeps its guests and nights ([#432](https://github.com/Kamra-PMS/kamra-pms/pull/432), @SandroG1977)
+  * **branding:** the hotel's own name and logo next to Kamra's ([#436](https://github.com/Kamra-PMS/kamra-pms/pull/436), building on [#431](https://github.com/Kamra-PMS/kamra-pms/pull/431) by @pmwanje2); TRADEMARK.md ([#434](https://github.com/Kamra-PMS/kamra-pms/pull/434))
+  * **i18n:** Portuguese city ledger labels and "Reservar" ([#433](https://github.com/Kamra-PMS/kamra-pms/pull/433))
+
+### Upgrade notes
+
+* Run `bench migrate`: new Property field `booking_language`, new Stay Occupant field `guest_stated_age`, Group Booking and Group Room Block changes
+
+### Thanks
+
+@Kruthikagowda12, @SandroG1977 and @pmwanje2 for this release.
+
+## [2.7.0](https://github.com/Kamra-PMS/kamra-pms/compare/v2.6.23...v2.7.0) (2026-10-30)
+
+
+### Features
+
+* **groups:** main room pays for the group, staggered check-in, group booking flow ([#397](https://github.com/Kamra-PMS/kamra-pms/issues/397)) ([a4e2c31](https://github.com/Kamra-PMS/kamra-pms/commit/a4e2c31e469a2cf29e6ebd021aeb55706d184146))
+* **localization:** add Nicaragua country pack ([#398](https://github.com/Kamra-PMS/kamra-pms/issues/398)) ([d3a68bf](https://github.com/Kamra-PMS/kamra-pms/commit/d3a68bfac78106509790611455ae5744b00d6692))
+* SI call list release ([#411](https://github.com/Kamra-PMS/kamra-pms/issues/411)) ([#425](https://github.com/Kamra-PMS/kamra-pms/issues/425)) ([cfa3b89](https://github.com/Kamra-PMS/kamra-pms/commit/cfa3b8901114919c1a92793cd7885fa1411d9d5a))
+  * **front-desk:** ID scanning with a card per guest and group check-in; undo a checkout the same business day; extra guest arrival times and early checkout; quick fixes from the call list
+  * **finance:** accounts receivable with company accounts, direct invoices and transfers; month-end bill per company; accounts payable, a five-day cash view, P&L and balance sheet
+  * **billing:** pay and show bills in another currency; allowance approval; a bill per guest sharing a room; change company
+  * **pos:** move a restaurant bill to the right room the same day; waiter and cashier on the bill; kitchen start and pickup times; F&B Manager role
+  * **night-audit:** report with year to date, food and beverage, outlets, banquets, brought and carried forward; owner view for phones
+  * **crs:** itineraries, one trip across several properties
+  * **security:** ledger entries are read-only outside Kamra's money code; the dashboard hides money and occupancy from the front desk
+  * **localization:** core is country-neutral: ID rules, financial year, UPI and invoice tax notes live in the country packs
+  * **i18n:** Portuguese hotel wording across the pack (review by @SandroG1977)
+
+
+### Bug Fixes
+
+* **booking-engine:** stop /book crashing on bad URLs, redesign the page, dress the demo ([#400](https://github.com/Kamra-PMS/kamra-pms/issues/400)) ([15aa82a](https://github.com/Kamra-PMS/kamra-pms/commit/15aa82ac743ff3c254f9608e8418c5b5dfee68d2))
+* **ui:** friendly crash, offline and session-ended handling ([#399](https://github.com/Kamra-PMS/kamra-pms/issues/399)) ([082323f](https://github.com/Kamra-PMS/kamra-pms/commit/082323f3849fbf23dc08e4a03c4a0f2b377c136f))
+
+### Upgrade notes
+
+* Run `bench migrate`: new fields and doctypes, and the patches `kamra.patches.v46.ledger_custom_perms_readonly`, `kamra.patches.v46.backfill_pos_order_business_date` and `kamra.patches.v46.backfill_property_short_code`
+* New role F&B Manager. Folio Ledger Entry, City Ledger Entry, Credit Note, Vendor and Itinerary are read-only for business roles in Desk
+* ChatGPT users connected over MCP before this release reconnect once
+
+## [2.6.23](https://github.com/Kamra-PMS/kamra-pms/compare/v2.6.22...v2.6.23) (2026-10-28)
+
+
+### Features
+
+* **booking:** Booked via for multi-room and walk-ins, OTA commission ([#386](https://github.com/Kamra-PMS/kamra-pms/issues/386)) ([95c3b26](https://github.com/Kamra-PMS/kamra-pms/commit/95c3b26248d607aecfd9ddd32293e3ce362cec63))
+* **finance:** company statements, due-date reminders and DSO ([#238](https://github.com/Kamra-PMS/kamra-pms/issues/238) phase 2) ([#388](https://github.com/Kamra-PMS/kamra-pms/issues/388)) ([e83c26a](https://github.com/Kamra-PMS/kamra-pms/commit/e83c26ab9183958cd999f094e2344d523006460a))
+* **i18n:** Portuguese (pt-BR), and Today screen null-safety. Contributed by @SandroG1977 ([#377](https://github.com/Kamra-PMS/kamra-pms/issues/377), [#383](https://github.com/Kamra-PMS/kamra-pms/issues/383)) ([5f5cdc5](https://github.com/Kamra-PMS/kamra-pms/commit/5f5cdc5b958fbaeb1b7f6e6a9b1adaf760d9ded6))
+* **localization:** Brazil country pack: ISS, BRL, CNPJ/CPF, NFS-e. Contributed by @SandroG1977 ([#378](https://github.com/Kamra-PMS/kamra-pms/issues/378)) ([2061e81](https://github.com/Kamra-PMS/kamra-pms/commit/2061e81510c5177dda513c10de1f717ce7007cb7))
+* **night-audit:** per-property schedule and run log ([#203](https://github.com/Kamra-PMS/kamra-pms/issues/203)) ([#389](https://github.com/Kamra-PMS/kamra-pms/issues/389)) ([083e2c5](https://github.com/Kamra-PMS/kamra-pms/commit/083e2c59641300eea8d9371660d0918fda883e2e))
+* **privacy:** WhatsApp marketing consent and opt-out ([#89](https://github.com/Kamra-PMS/kamra-pms/issues/89)) ([#385](https://github.com/Kamra-PMS/kamra-pms/issues/385)) ([dc0c708](https://github.com/Kamra-PMS/kamra-pms/commit/dc0c708999fa186d48a2d8ac659f568585d09712))
+
+## [2.6.22](https://github.com/Kamra-PMS/kamra-pms/compare/v2.6.21...v2.6.22) (2026-10-27)
+
+
+### Features
+
+* **booking:** Booked via an OTA, with its reference and sold price ([#365](https://github.com/Kamra-PMS/kamra-pms/issues/365)) ([01b894a](https://github.com/Kamra-PMS/kamra-pms/commit/01b894a6f6dab64c874845de9f86bb23749adfb6))
+* **mcp:** city_ledger_aging read-only tool for AR aging ([#259](https://github.com/Kamra-PMS/kamra-pms/issues/259)) ([53ff963](https://github.com/Kamra-PMS/kamra-pms/commit/53ff963d3c5c683e372d59edb5d88e95898c73bf))
+* **reports:** department packs, new datasets, week-over-week ([#346](https://github.com/Kamra-PMS/kamra-pms/issues/346)) ([077d3ae](https://github.com/Kamra-PMS/kamra-pms/commit/077d3ae248183dd1ab0e5243e4075fccae7c1344))
+
+
+### Bug Fixes
+
+* **assistant:** respect the property's currency in chat. Contributed by @ernestoruiz89 ([#368](https://github.com/Kamra-PMS/kamra-pms/issues/368)) ([8a6b783](https://github.com/Kamra-PMS/kamra-pms/commit/8a6b783059fe553814ac5ec0816e75207d3f46ca))
+* **laundry:** keep it in Housekeeping only, tidy house order cards ([#364](https://github.com/Kamra-PMS/kamra-pms/issues/364)) ([5a1119f](https://github.com/Kamra-PMS/kamra-pms/commit/5a1119fdd1f172c96446fe82a14ad7179ca91094))
+
+## [2.6.21](https://github.com/Kamra-PMS/kamra-pms/compare/v2.6.20...v2.6.21) (2026-10-25)
+
+
+### Features
+
+* **i18n:** Spanish, complete. Contributed by @ernestoruiz89 ([#324](https://github.com/Kamra-PMS/kamra-pms/issues/324)), finished and aligned to its glossary ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **i18n:** Arabic, complete: about 3,100 missing strings added ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **docs:** staff guides in Spanish (`/docs/es/`) and Arabic (`/docs/ar/`, right to left) ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **reports:** custom report builder with save and email ([#335](https://github.com/Kamra-PMS/kamra-pms/issues/335)); group by and drill down; Front Office, Housekeeping, F&B and Hotel Manager packs, opened, emailed or sent every Monday; report pages and emails in the reader's language ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **reports:** From/To ranges on manager flash, F&B dashboard, shift report, folio history, room insights and the banquet pipeline ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **housekeeping:** room status, lost and found and clean-minutes reports; Reports in the Housekeeping menu ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **front-desk:** book from an empty tape chart cell; on a room move keep the price, take the new room's rate or enter an agreed rate; guest list columns and CSV export ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **front-desk:** Today room tiles show the balance due and an Extend stay action ([#347](https://github.com/Kamra-PMS/kamra-pms/issues/347)); In House, one Reports hub, agent action cards ([8c9e639](https://github.com/Kamra-PMS/kamra-pms/commit/8c9e63922c81011623b56014cc8e6505539ae100))
+* **booking:** international guest phone prefixes; the property's country is the default. Contributed by @ernestoruiz89 ([#345](https://github.com/Kamra-PMS/kamra-pms/issues/345), [#360](https://github.com/Kamra-PMS/kamra-pms/issues/360))
+* **finance:** past transaction dates need Finance or Hotel Admin ([#348](https://github.com/Kamra-PMS/kamra-pms/issues/348))
+* **mcp:** MCP Read and MCP Manage roles, AI access admin page, bulk room assignment ([59219c0](https://github.com/Kamra-PMS/kamra-pms/commit/59219c015478a11e1e9a3afe406994f762576cbe)); Kamra Agent and MCP offer exactly the reports each role may open ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **demo:** 75 days of history rebuilt by every reset ([e5e8c4a](https://github.com/Kamra-PMS/kamra-pms/commit/e5e8c4a726a6395e6d2c833d449d2899029aa3c8)); the reset keeps Kamra Agent's settings and key ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+
+
+### Bug Fixes
+
+* **billing:** payments carry the property's currency, not INR; a migrate patch restamps non-FX rows ([#341](https://github.com/Kamra-PMS/kamra-pms/issues/341), [#349](https://github.com/Kamra-PMS/kamra-pms/issues/349))
+* **booking:** a room type's total occupancy caps adults and children together ([#342](https://github.com/Kamra-PMS/kamra-pms/issues/342), [#349](https://github.com/Kamra-PMS/kamra-pms/issues/349))
+* **billing:** refunding a pre-arrival advance releases the Deposit ledger and lowers the advance held ([#343](https://github.com/Kamra-PMS/kamra-pms/issues/343), [#349](https://github.com/Kamra-PMS/kamra-pms/issues/349))
+* **booking:** simultaneous bookings no longer fail with HTTP 500 on the reservation number ([#344](https://github.com/Kamra-PMS/kamra-pms/issues/344), [#349](https://github.com/Kamra-PMS/kamra-pms/issues/349)). [#341](https://github.com/Kamra-PMS/kamra-pms/issues/341) to [#344](https://github.com/Kamra-PMS/kamra-pms/issues/344) were reported by @lhertig
+* **night-audit:** the 03:00 run recovers a stuck business date and catches up ([7f20de1](https://github.com/Kamra-PMS/kamra-pms/commit/7f20de1b5d8d4e5b18b602b953294a9adef74f05))
+* **security:** outlet dashboard checks the outlet's property; report module switches apply ([#352](https://github.com/Kamra-PMS/kamra-pms/issues/352))
+* **deps:** vite 6.4.5, closing all 10 Dependabot alerts (dev server only) ([#358](https://github.com/Kamra-PMS/kamra-pms/issues/358)); no open code quality findings ([#359](https://github.com/Kamra-PMS/kamra-pms/issues/359))
+* **docs:** each release freezes its docs snapshot again ([#353](https://github.com/Kamra-PMS/kamra-pms/issues/353))
+
 ## [2.6.20](https://github.com/Kamra-PMS/kamra-pms/compare/v2.6.19...v2.6.20) (2026-10-24)
 
 

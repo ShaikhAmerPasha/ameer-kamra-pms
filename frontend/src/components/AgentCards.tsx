@@ -225,6 +225,7 @@ function QuoteCard({ card }: { card: Extract<AgentCard, { type: "quote" }> }) {
             {day(card.check_in_date)} - {day(card.check_out_date)}
             {card.nights ? ` · ${t("{n} nights", { n: card.nights })}` : ""}
             {card.adults ? ` · ${t("{n} adults", { n: card.adults })}` : ""}
+            {card.children ? ` · ${t("{n} children", { n: card.children })}` : ""}
           </div>
         </div>
         <div className="text-right">
@@ -245,6 +246,8 @@ function QuoteCard({ card }: { card: Extract<AgentCard, { type: "quote" }> }) {
                 room_type: card.room_type,
                 date: card.check_in_date,
                 stays: card.nights,
+                adults: card.adults,
+                children: card.children,
               })
             }
           >

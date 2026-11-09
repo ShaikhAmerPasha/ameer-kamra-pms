@@ -11,6 +11,7 @@ import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { Sheet } from "../components/ui/sheet"
 import { cn } from "../lib/utils"
+import { parseDate, shiftDate } from "../lib/stay"
 import { cur, moneyLocale } from "../lib/money"
 import { useT, t as translate, uiDateLocale } from "../lib/i18n"
 import CheckOutDialog from "../components/CheckOutDialog"
@@ -160,12 +161,6 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
-function shiftDate(iso: string, days: number) {
-  const d = new Date(iso)
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
 /** Whole days from `a` to `b` (YYYY-MM-DD). */
 const dayDiff = (a: string, b: string) =>
   Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000)
@@ -253,6 +248,7 @@ export default function TapeChart() {
   )
 
   const load = useCallback(() => {
+    if (!parseDate(start)) return // the date input is mid-edit
     if (mode === "day") {
       call<TapeData>("kamra.api.tape_chart", {
         property: getCurrentProperty(), start_date: start, days: DAYS,
@@ -478,13 +474,13 @@ export default function TapeChart() {
         </Button>
         <div className="ms-auto flex items-center gap-1">
           <Button variant="outline" aria-label={t("Previous")}
-            onClick={() => setStart(shiftDate(start, mode === "day" ? -7 : -1))}>
+            onClick={() => setStart(shiftDate(start, mode === "day" ? -7 : -1) || todayIso())}>
             <ChevronLeft className="size-4 rtl:rotate-180" />
           </Button>
           <input type="date" className={cn(inputCls, "w-40")} value={start}
             onChange={(e) => setStart(e.target.value)} />
           <Button variant="outline" aria-label={t("Next")}
-            onClick={() => setStart(shiftDate(start, mode === "day" ? 7 : 1))}>
+            onClick={() => setStart(shiftDate(start, mode === "day" ? 7 : 1) || todayIso())}>
             <ChevronRight className="size-4 rtl:rotate-180" />
           </Button>
         </div>
@@ -507,7 +503,7 @@ export default function TapeChart() {
             <span key={c.in_res} className="me-3 whitespace-nowrap">
               {t("Room {room} on {date}: out {etd} ({out}) / in {eta} ({in})", {
                 room: c.room_number,
-                date: new Date(c.date).toLocaleDateString(uiDateLocale("en-IN"), { day: "numeric", month: "short" }),
+                date: new Date(c.date).toLocaleDateString(uiDateLocale(moneyLocale()), { day: "numeric", month: "short" }),
                 etd: c.etd, out: c.out_guest, eta: c.eta, in: c.in_guest,
               })}
             </span>
@@ -528,7 +524,7 @@ export default function TapeChart() {
                 <div key={d} style={{ width: cellW }}
                   className={cn("shrink-0 border-l border-zinc-100 px-1 py-2 text-center",
                     weekend && "bg-brand-50 text-brand-700")}>
-                  {day.toLocaleDateString(uiDateLocale("en-IN"), { weekday: "short" })}{" "}
+                  {day.toLocaleDateString(uiDateLocale(moneyLocale()), { weekday: "short" })}{" "}
                   <span className="font-semibold">{day.getDate()}</span>
                 </div>
               )
@@ -947,6 +943,19 @@ export default function TapeChart() {
                           to: money(datePreview.new_amount),
                           amt: money(datePreview.difference),
                         })}
+                  </p>
+                )}
+                {datesChanged && datesValid && datePreview?.charged_nights && (
+                  <p className="text-xs text-zinc-500">
+                    {datePreview.charged_nights.credit_total < 0
+                      ? t("Nights already charged keep their line; Kamra credits {amt} for the lower rate.", {
+                          amt: money(-datePreview.charged_nights.credit_total),
+                        })
+                      : datePreview.charged_nights.kept_difference > 0
+                        ? t("Nights already charged keep their rate; difference {amt} can be given as an allowance.", {
+                            amt: money(datePreview.charged_nights.kept_difference),
+                          })
+                        : t("Nights already charged keep their rate.")}
                   </p>
                 )}
                 <div className="flex justify-end gap-2">

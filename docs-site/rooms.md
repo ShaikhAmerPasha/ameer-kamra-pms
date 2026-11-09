@@ -1,12 +1,12 @@
-# Rooms - every room, its status and its story
+# Room Board - every room, its status and its story
 
-The Rooms screen is the big room board: every room as a tile, grouped by
+The Room Board shows every room as a tile, grouped by
 floor, with what is happening in it today. Tap a room to change its
 status, deal with the guest in it, see the next weeks, and see who stayed
 and who cleaned it. **Insights** shows which rooms sell, earn and get
 cleaned, and how fast.
 
-Open it from **Front Desk → Rooms**, from **Housekeeping → Rooms**
+Open it from **Front Desk → Room Board**, from **Housekeeping → Room Board**
 (supervisors), or with **Open full view** on the Today room board. Front
 Desk, Housekeeping Supervisor, Night Auditor, Revenue Manager, Finance and
 Hotel Admin users can open it. Housekeeping attendants work from their task
@@ -129,6 +129,30 @@ The presets count nights up to last night.
   nights out of service or average clean. Tap a room to open it.
 
 The numbers are worked out on the server and kept for ten minutes.
+
+## Set up floors and rooms
+
+Open **Admin** and use the three setup pages in this order: **Floors**,
+**Room Types**, **Rooms**. Each is a list you can search, filter, add to
+and edit.
+
+- **Floors** lists the floors of the property. **Floor order** decides the
+  order of the floor tabs and lists on the Room Board, the Housekeeping
+  Board and the **Floor** filter on **Rooms**: lower numbers come first.
+  Click **New** to add a floor. Renaming a floor renames it on all its
+  rooms. A floor that still has rooms cannot be deleted or disabled; move
+  the rooms first.
+- **Rooms** has **Floor** and **Room type** lists next to **Status**. In
+  the room form, **Floor** is a list of your floors; choose **Add a floor**
+  to type a new one. A floor name used for the first time is added to
+  **Floors** for you, so imports and the setup wizard keep working.
+- **Add rooms** creates a run of rooms at once. Pick the floor and the room
+  type, enter the first and last number (and an optional prefix, so 1 to 4
+  with prefix V gives V1 to V4), then **Preview**. Numbers that already
+  exist are skipped and listed. **Create** adds the rest.
+
+The room type's old **Category** is now called **Unit kind** (Villa,
+Private or Shared). Nothing else about it changed.
 
 ## Good to know
 

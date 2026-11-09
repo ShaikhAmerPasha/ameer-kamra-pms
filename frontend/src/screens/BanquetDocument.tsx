@@ -257,6 +257,11 @@ export default function BanquetDocument() {
           <footer className="mt-10 flex items-end justify-between gap-6 border-t border-zinc-200 pt-4">
             <p className="max-w-sm text-[11px] leading-relaxed text-zinc-400">
               {doc.header.footer}
+              {doc.header.invoice_footer && (
+                <span className="mt-2 block whitespace-pre-line">
+                  {doc.header.invoice_footer}
+                </span>
+              )}
             </p>
             <div className="shrink-0 text-center">
               <div className="mb-1 h-10 w-44 border-b border-zinc-300" />
@@ -336,7 +341,7 @@ function Letterhead({ doc }: { doc: Doc }) {
                 <>
                   <br />
                   <span className="font-medium text-zinc-700">
-                    {h.tax_id_label ?? translate("GSTIN")}: {p.gstin}
+                    {translate(h.tax_id_label ?? "Tax ID")}: {p.gstin}
                   </span>
                 </>
               )}

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   BedDouble,
+  Check,
+  ChevronRight,
   LogIn,
   LogOut,
   Users,
@@ -8,6 +10,7 @@ import {
   ListChecks,
   PieChart,
   SlidersHorizontal,
+  X,
 } from "lucide-react"
 import { Link, useNavigate, useLocation, useOutletContext } from "react-router-dom"
 import {
@@ -51,12 +54,12 @@ import {
   type WidgetId,
 } from "../lib/rooms"
 
-
-const HK_CYCLE: RoomRow["housekeeping_status"][] = [
-  "Dirty",
-  "Clean",
-  "Inspected",
-  "Out of Order",
+// the menu's status buttons, in the board's colours and workflow order
+const HK_CHOICES: { status: RoomRow["housekeeping_status"]; label: string; tone: string }[] = [
+  { status: "Dirty", label: "Dirty", tone: "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100" },
+  { status: "Clean", label: "Clean", tone: "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100" },
+  { status: "Inspected", label: "Inspected", tone: "border-sky-300 bg-sky-50 text-sky-900 hover:bg-sky-100" },
+  { status: "Out of Order", label: "Out of order", tone: "border-rose-300 bg-rose-50 text-rose-900 hover:bg-rose-100" },
 ]
 
 const hkTone: Record<RoomRow["housekeeping_status"], string> = {
@@ -68,6 +71,131 @@ const hkTone: Record<RoomRow["housekeeping_status"], string> = {
 
 const inr0 = (n: number) =>
   Number(n).toLocaleString(moneyLocale(), { maximumFractionDigits: 0 })
+
+/** Group rooms held but not picked up: a lighter step of the brand ramp. */
+const HELD_SHADE = "color-mix(in oklab, var(--color-brand-600) 35%, var(--color-brand-50))"
+
+/** One night on the books: kamra.dashboards.occupancy_forecast. */
+interface ForecastDay {
+  date: string
+  booked: number
+  /** group block rooms not yet picked up (released blocks left out) */
+  held: number
+  available: number
+  occupancy_pct: number
+  occupancy_with_holds_pct: number
+}
+
+/** The next 90 nights as a heat strip (one cell a night, darker = fuller),
+ * with 30/60/90 day averages and a weekly table for screen readers. Rooms
+ * only: the desk sees it, so no money. */
+function OccupancyForecast({ days }: { days: ForecastDay[] }) {
+  const { t } = useT()
+  const fmt = (d: string, o: Intl.DateTimeFormatOptions) =>
+    new Date(d + "T00:00:00").toLocaleDateString(uiDateLocale(undefined), o)
+  const avg = (xs: ForecastDay[]) => {
+    const rooms = xs.reduce((a, x) => a + x.booked + x.held + x.available, 0)
+    return rooms ? Math.round((100 * xs.reduce((a, x) => a + x.booked, 0)) / rooms) : 0
+  }
+  const spans = [30, 60, 90].map((n) => ({ n, pct: avg(days.slice(0, n)) }))
+  const weeks = Array.from({ length: Math.ceil(days.length / 7) }, (_, i) =>
+    days.slice(i * 7, i * 7 + 7),
+  )
+  // sequential, one hue: the brand ramp from its light end to its dark end
+  // (both flip with the theme, so the fuller night always has more contrast)
+  const fill = (pct: number) =>
+    `color-mix(in oklab, var(--color-brand-700) ${Math.max(6, Math.min(100, pct))}%, var(--color-brand-50))`
+  // booked fills from the bottom; group holds sit on top in a lighter shade
+  const stack = (d: ForecastDay) => {
+    const b = d.occupancy_pct
+    const h = d.occupancy_with_holds_pct
+    return `linear-gradient(to top, ${fill(b)} ${b}%, ${HELD_SHADE} ${b}% ${h}%, var(--color-brand-50) ${h}%)`
+  }
+  const cols = { gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }
+  const summary = spans.map((s) => t("{n} days {pct}%", s)).join(", ")
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2.5">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="text-xs font-medium text-zinc-700">
+          {t("Occupancy on the books, next 90 days")}
+        </div>
+        <div className="flex gap-3 text-[11px] text-zinc-500">
+          {spans.map((s) => (
+            <span key={s.n}>
+              {t("{n} days", { n: s.n })}{" "}
+              <span className="font-semibold tabular-nums text-zinc-900">{s.pct}%</span>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div
+        role="img"
+        aria-label={t("Occupancy on the books: {summary}", { summary })}
+        className="grid gap-px"
+        style={cols}
+      >
+        {days.map((d) => (
+          <div
+            key={d.date}
+            className="h-6 rounded-[2px]"
+            style={{ background: stack(d) }}
+            title={t(
+              "{date}: {booked} booked, {held} held for groups, of {total} rooms ({pct}%, {pctHolds}% with holds)",
+              {
+                date: fmt(d.date, { weekday: "short", day: "numeric", month: "short" }),
+                booked: d.booked,
+                held: d.held,
+                total: d.booked + d.held + d.available,
+                pct: Math.round(d.occupancy_pct),
+                pctHolds: Math.round(d.occupancy_with_holds_pct),
+              },
+            )}
+          />
+        ))}
+      </div>
+      <div aria-hidden className="mt-1 grid text-[10px] text-zinc-400" style={cols}>
+        {days.map((d, i) => (
+          <div key={d.date} className="whitespace-nowrap">
+            {i === 0 || d.date.endsWith("-01") ? fmt(d.date, { month: "short" }) : ""}
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex gap-3 text-[10px] text-zinc-500">
+        <span className="flex items-center gap-1">
+          <span aria-hidden className="size-2 rounded-[2px] bg-brand-700" />
+          {t("Booked")}
+        </span>
+        <span className="flex items-center gap-1">
+          <span aria-hidden className="size-2 rounded-[2px]" style={{ background: HELD_SHADE }} />
+          {t("Held for groups")}
+        </span>
+      </div>
+      <details className="mt-1 text-[11px] text-zinc-500">
+        <summary className="cursor-pointer select-none">{t("By week")}</summary>
+        <table className="mt-1 w-full tabular-nums">
+          <thead>
+            <tr className="text-zinc-400">
+              <th className="py-0.5 text-start font-medium">{t("Week of")}</th>
+              <th className="py-0.5 text-end font-medium">{t("Room nights booked")}</th>
+              <th className="py-0.5 text-end font-medium">{t("Held for groups")}</th>
+              <th className="py-0.5 text-end font-medium">{t("Occ %")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {weeks.map((w) => (
+              <tr key={w[0].date} className="text-zinc-700">
+                <td className="py-0.5">{fmt(w[0].date, { day: "numeric", month: "short" })}</td>
+                <td className="py-0.5 text-end">{w.reduce((a, x) => a + x.booked, 0)}</td>
+                <td className="py-0.5 text-end">{w.reduce((a, x) => a + x.held, 0)}</td>
+                <td className="py-0.5 text-end">{avg(w)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </div>
+  )
+}
 
 /** Paid / due / unpaid at a glance - the folio is the source of truth,
  * this chip just saves the trip to Billing. */
@@ -208,8 +336,10 @@ function ordinalFloor(
 ) {
   if (f === NO_FLOOR) return t("Unassigned floor")
   const n = Number(f)
-  if (Number.isNaN(n)) return /floor/i.test(f) ? f : t("{f} Floor", { f })
-  if (lang === "es") return t("{n} Floor", { n })
+  // a named floor ("Garden wing", "Mezzanine") shows as the hotel wrote it
+  if (Number.isNaN(n)) return f
+  // English ordinals ("1st") only read right in English
+  if (!lang.startsWith("en")) return t("{n} Floor", { n })
   const s = ["th", "st", "nd", "rd"]
   const v = n % 100
   return t("{n}{ord} Floor", { n, ord: s[(v - 20) % 10] || s[v] || s[0] })
@@ -355,6 +485,9 @@ export default function Today() {
   const [snap, setSnap] = useState<Snapshot | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [kpi, setKpi] = useState<any>(null)
+  // revenue and occupancy only when the server sent them (it leaves them
+  // out for the front desk: kamra.dashboards.FIGURE_ROLES)
+  const figures = !!kpi && !kpi.figures_hidden
   const [busy, setBusy] = useState<string | null>(null)
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -368,8 +501,10 @@ export default function Today() {
   useEffect(() => {
     getTodayLayout()
       .then((info) => {
-        setLayoutInfo(info)
-        setLayout(info.layout)
+        if (info && info.layout) {
+          setLayoutInfo(info)
+          setLayout(info.layout)
+        }
       })
       .catch(() => {
         /* keep the cached / built-in layout */
@@ -403,6 +538,15 @@ export default function Today() {
   const location = useLocation()
   const [checkingOut, setCheckingOut] = useState<string | null>(null)
   const [roomMenu, setRoomMenu] = useState<string | null>(null)
+  // Out of order takes a room off sale: the first tap asks, the second sets it
+  const [confirmOoo, setConfirmOoo] = useState(false)
+  useEffect(() => {
+    setConfirmOoo(false)
+    if (!roomMenu) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setRoomMenu(null) }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [roomMenu])
   // the room panel from the Rooms screen, opened over Today
   const [roomPanel, setRoomPanel] = useState<{ room: string; tab?: RoomTab } | null>(null)
   const [moving, setMoving] = useState<{ res: string; number: string } | null>(null)
@@ -428,16 +572,17 @@ export default function Today() {
     }
   }
 
-  const occupied = snap?.rooms.filter(
-    (r) => r.occupancy_status === "Occupied",
-  ).length
-  const occupancyPct = snap?.rooms.length
-    ? Math.round(((occupied ?? 0) / snap.rooms.length) * 100)
-    : 0
+  // occupied over sellable rooms (out of order left out), from the server;
+  // the room snapshot until it answers
+  const occNow = kpi?.occupancy_now
+  const occupied = occNow
+    ? Number(occNow.occupied)
+    : snap?.rooms.filter((r) => r.occupancy_status === "Occupied").length
+  const sellableN = occNow ? Number(occNow.sellable) : (snap?.rooms.length ?? 0)
+  const occupancyPct = sellableN ? Math.round(((occupied ?? 0) / sellableN) * 100) : 0
   const arrivalsN = snap?.arrivals.length ?? 0
   const departuresN = snap?.departures.length ?? 0
   const inhouseN = snap?.in_house.length ?? 0
-  const roomsN = snap?.rooms.length ?? 0
   const revenue = Number(kpi?.revenue_today ?? 0)
   // Today's RevPAR (room revenue / rooms). MTD lives on statistics.revpar.
   const revpar = Number(kpi?.revpar ?? kpi?.statistics?.revpar ?? 0)
@@ -451,10 +596,6 @@ export default function Today() {
   )
   const shownFloors = floor === "All" ? floors : [floor]
   const renderRoom = (room: RoomRow) => {
-    const next =
-      HK_CYCLE[
-        (HK_CYCLE.indexOf(room.housekeeping_status) + 1) % HK_CYCLE.length
-      ]
     const occupied = room.occupancy_status === "Occupied"
     const stay = occupied
       ? (snap?.in_house ?? []).find((r) => r.room === room.name)
@@ -463,8 +604,7 @@ export default function Today() {
     const arriving = !occupied
       ? (snap?.arrivals ?? []).find((r) => r.room === room.name)
       : undefined
-    const hasMenu = !!(stay || arriving)
-    const item = "block w-full px-3 py-2.5 text-start hover:bg-zinc-50"
+    const item = "flex w-full items-center px-3 py-2.5 text-start hover:bg-zinc-50"
     const openRoom = (tab?: RoomTab) => {
       setRoomMenu(null)
       setRoomPanel({ room: room.name, tab })
@@ -477,19 +617,16 @@ export default function Today() {
               ? t("{guest} · check out or open registration", { guest: stay.guest_name })
               : arriving
                 ? t("{guest} arrives today · check in", { guest: arriving.guest_name })
-                : t("Housekeeping: {from} → {to} (click to advance)", {
-                    from: room.housekeeping_status,
-                    to: next,
+                : t("Housekeeping: {status} · click to change", {
+                    status: t(room.housekeeping_status),
                   }))
           }
           disabled={busy === room.name}
-          aria-haspopup={hasMenu ? "menu" : undefined}
-          aria-expanded={hasMenu ? roomMenu === room.name : undefined}
-          onClick={() =>
-            hasMenu
-              ? setRoomMenu((m) => (m === room.name ? null : room.name))
-              : act(room.name, () => setHousekeepingStatus(room.name, next))
-          }
+          aria-haspopup="menu"
+          aria-expanded={roomMenu === room.name}
+          // a click opens the menu, never changes a status by itself: one
+          // stray tap used to mark a room Clean or Out of Order
+          onClick={() => setRoomMenu((m) => (m === room.name ? null : room.name))}
           className={cn(
             "w-full cursor-pointer rounded-lg border px-2 pb-1.5 pt-2 text-start transition-transform",
             "hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
@@ -518,91 +655,101 @@ export default function Today() {
         {(occupied || room.housekeeping_status === "Clean") && (
           <RoomMediaButton room={room.name} />
         )}
-        {hasMenu && roomMenu === room.name && (
-          <div
-            role="menu"
-            className="fixed inset-x-4 bottom-4 z-40 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 text-base shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:start-0 sm:top-full sm:z-20 sm:mt-1 sm:w-52 sm:rounded-lg sm:text-sm sm:shadow-lg"
-          >
-            <p className="truncate px-3 py-1 text-xs text-zinc-500">
-              {(stay ?? arriving)!.guest_name}
-            </p>
-            {stay && (
-              <>
-                <button
-                  role="menuitem"
-                  className={cn(item, "font-medium text-zinc-800")}
-                  onClick={() => {
-                    setRoomMenu(null)
-                    setCheckingOut(stay.name)
-                  }}
-                >
-                  {t("Check out")}
-                </button>
-                <button
-                  role="menuitem"
-                  className={cn(item, "text-zinc-700")}
-                  onClick={() => {
-                    setRoomMenu(null)
-                    navigate(`/reservations/${stay.name}`)
-                  }}
-                >
-                  {t("Extend stay")}
-                </button>
-                <button
-                  role="menuitem"
-                  className={cn(item, "text-zinc-700")}
-                  onClick={() => openRoom("billing")}
-                >
-                  {t("Folio and billing")}
-                </button>
-                <button
-                  role="menuitem"
-                  className={cn(item, "text-zinc-700")}
-                  onClick={() => openRoom("requests")}
-                >
-                  {t("Guest requests")}
-                </button>
-                <button
-                  role="menuitem"
-                  className={cn(item, "text-zinc-700")}
-                  onClick={() => navigate(`/grc/${stay.name}`)}
-                >
-                  {t("Registration card")}
-                </button>
-              </>
-            )}
-            {arriving && (
-              <>
-                <button
-                  role="menuitem"
-                  className={cn(item, "font-medium text-zinc-800")}
-                  onClick={() => {
-                    setRoomMenu(null)
-                    setCheckingIn(arriving.name)
-                  }}
-                >
-                  {t("Check in")}
-                </button>
-                <button
-                  role="menuitem"
-                  className={cn(item, "text-zinc-700")}
-                  onClick={() => {
-                    setRoomMenu(null)
-                    void act(room.name, () => setHousekeepingStatus(room.name, next))
-                  }}
-                >
-                  {t("Housekeeping: mark {to}", { to: t(next) })}
-                </button>
-              </>
-            )}
-            <button
-              role="menuitem"
-              className={cn(item, "text-zinc-700")}
-              onClick={() => openRoom()}
+        {roomMenu === room.name && (
+          <>
+            {/* a click anywhere outside closes it; dimmed on a phone */}
+            <div className="fixed inset-0 z-30 bg-zinc-900/30 sm:z-10 sm:bg-transparent"
+              aria-hidden onClick={() => setRoomMenu(null)} />
+            <div
+              role="menu"
+              aria-label={t("Room {n}", { n: room.room_number })}
+              className="fixed inset-x-4 bottom-4 z-40 overflow-hidden rounded-xl border border-zinc-200 bg-white text-base shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:start-0 sm:top-full sm:z-20 sm:mt-1 sm:w-64 sm:rounded-lg sm:text-sm sm:shadow-lg"
             >
-              {t("Room details")}
-            </button>
-          </div>
+              <div className="flex items-start gap-2 border-b border-zinc-100 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-zinc-900">{t("Room {n}", { n: room.room_number })}</span>
+                    <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                      occupied ? "border-brand-700 bg-brand-700 text-white" : hkTone[room.housekeeping_status])}>
+                      {occupied ? t("Occupied") : t(room.housekeeping_status)}
+                    </span>
+                  </div>
+                  {(stay ?? arriving) && (
+                    <p className="mt-0.5 truncate text-xs text-zinc-500">{(stay ?? arriving)!.guest_name}</p>
+                  )}
+                </div>
+                <button className="-me-1 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                  aria-label={t("Close")} onClick={() => setRoomMenu(null)}>
+                  <X className="size-4" aria-hidden />
+                </button>
+              </div>
+              {stay && (
+                <div className="py-1">
+                  <button role="menuitem" className={cn(item, "font-medium text-zinc-800")}
+                    onClick={() => { setRoomMenu(null); setCheckingOut(stay.name) }}>
+                    {t("Check out")}
+                  </button>
+                  <button role="menuitem" className={cn(item, "text-zinc-700")}
+                    onClick={() => { setRoomMenu(null); navigate(`/reservations/${stay.name}`) }}>
+                    {t("Extend stay")}
+                  </button>
+                  <button role="menuitem" className={cn(item, "text-zinc-700")} onClick={() => openRoom("billing")}>
+                    {t("Folio and billing")}
+                  </button>
+                  <button role="menuitem" className={cn(item, "text-zinc-700")} onClick={() => openRoom("requests")}>
+                    {t("Guest requests")}
+                  </button>
+                  <button role="menuitem" className={cn(item, "text-zinc-700")} onClick={() => navigate(`/grc/${stay.name}`)}>
+                    {t("Registration card")}
+                  </button>
+                </div>
+              )}
+              {arriving && (
+                <div className="py-1">
+                  <button role="menuitem" className={cn(item, "font-medium text-zinc-800")}
+                    onClick={() => { setRoomMenu(null); setCheckingIn(arriving.name) }}>
+                    {t("Check in")}
+                  </button>
+                </div>
+              )}
+              {!occupied && (
+                <div className={cn("px-3 pb-3 pt-2", arriving && "border-t border-zinc-100")}>
+                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+                    {t("Housekeeping status")}
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {HK_CHOICES.map((c) => {
+                      const current = c.status === room.housekeeping_status
+                      const asking = c.status === "Out of Order" && confirmOoo
+                      return (
+                        <button key={c.status} role="menuitemradio" aria-checked={current}
+                          disabled={current}
+                          className={cn("flex min-h-10 items-center justify-center gap-1 rounded-lg border px-2 text-sm font-medium",
+                            c.tone, current && "cursor-default ring-2 ring-zinc-900/70 ring-offset-1",
+                            asking && "bg-rose-600 text-white hover:bg-rose-700")}
+                          onClick={() => {
+                            if (c.status === "Out of Order" && !confirmOoo) {
+                              setConfirmOoo(true)
+                              return
+                            }
+                            setRoomMenu(null)
+                            void act(room.name, () => setHousekeepingStatus(room.name, c.status))
+                          }}>
+                          {current && <Check className="size-3.5" aria-hidden />}
+                          {asking ? t("Tap again to confirm") : t(c.label)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              <button role="menuitem" className={cn(item, "justify-between border-t border-zinc-100 text-zinc-700")}
+                onClick={() => openRoom()}>
+                {t("Room details")}
+                <ChevronRight className="size-4 text-zinc-400 rtl:rotate-180" aria-hidden />
+              </button>
+            </div>
+          </>
         )}
       </div>
     )
@@ -645,7 +792,7 @@ export default function Today() {
   const widgets: Record<WidgetId, React.ReactNode> = {
     kpis: (
       <div className="mb-6 space-y-3">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-3", figures ? "xl:grid-cols-6" : "xl:grid-cols-5")}>
         <StatCard
           icon={<LogIn className="size-4" />}
           label={t("Arrivals")}
@@ -676,10 +823,10 @@ export default function Today() {
           progress={occupancyPct}
           progressLabel={t("{occupied} of {total} rooms", {
             occupied: occupied ?? 0,
-            total: roomsN,
+            total: sellableN,
           })}
         />
-        <StatCard
+        {figures && <StatCard
           icon={<Wallet className="size-4" />}
           label={t("Revenue")}
           value={`${cur()}${inr0(revenue)}`}
@@ -696,7 +843,7 @@ export default function Today() {
           }
           spark={mkTrend(revenue)}
           to="/dashboard"
-        />
+        />}
         <StatCard
           icon={<ListChecks className="size-4" />}
           label={t("Open tasks")}
@@ -709,7 +856,7 @@ export default function Today() {
           to={"/housekeeping"}
         />
       </div>
-      {kpi && (
+      {kpi && figures && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           {moneyTiles.map((m) => (
             <Link
@@ -723,6 +870,7 @@ export default function Today() {
           ))}
         </div>
       )}
+      {kpi?.forecast?.length > 0 && <OccupancyForecast days={kpi.forecast} />}
       </div>
     ),
     booking_requests: <BookingRequests refreshKey={refreshKey} onChanged={refresh} />,
@@ -777,7 +925,7 @@ export default function Today() {
           <CardTitle>{t("Room board")}</CardTitle>
           <span className="flex min-w-0 items-center gap-3">
             <span className="hidden truncate text-xs text-zinc-400 sm:inline">
-              {t("Click a room to advance its housekeeping status")}
+              {t("Click a room to change its status or open it")}
             </span>
             <Link
               to="/room-board"
@@ -854,7 +1002,7 @@ export default function Today() {
             {t("{pct}% occupied · {occupied} of {total}", {
               pct: occupancyPct,
               occupied: occupied ?? 0,
-              total: roomsN,
+              total: sellableN,
             })}
           </span>
         </CardHeader>
@@ -879,10 +1027,11 @@ export default function Today() {
     ),
     open_tasks: <OpenTasksCard refreshKey={refreshKey} />,
   }
-  const visible = (ids: WidgetId[]) => ids.filter((id) => !layout.hidden.includes(id))
-  const top = visible(layout.top)
-  const left = visible(layout.left)
-  const right = visible(layout.right)
+  const activeLayout = layout ?? DEFAULT_TODAY_LAYOUT
+  const visible = (ids?: WidgetId[]) => (ids ?? []).filter((id) => !activeLayout.hidden?.includes(id))
+  const top = visible(activeLayout.top)
+  const left = visible(activeLayout.left)
+  const right = visible(activeLayout.right)
 
   return (
     <div>

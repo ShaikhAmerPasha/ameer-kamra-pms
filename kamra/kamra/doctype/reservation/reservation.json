@@ -14,11 +14,15 @@
   "column_break_a",
   "status",
   "booking_type",
+  "market_segment",
   "company",
   "group_booking",
+  "itinerary",
+  "pays_own_charges",
   "source",
   "channel",
   "ota_ref",
+  "ota_live_key",
   "idempotency_key",
   "hold_expires_on",
   "travel_agent",
@@ -48,6 +52,9 @@
   "actual_check_in",
   "column_break_d",
   "actual_check_out",
+  "check_out_business_date",
+  "booked_check_out_date",
+  "early_departure_reason",
   "sb_checkin_record",
   "checked_in_by",
   "checked_in_at",
@@ -189,6 +196,15 @@
    "description": "The channel manager's booking id - modifications and cancellations match on it"
   },
   {
+   "fieldname": "ota_live_key",
+   "fieldtype": "Data",
+   "label": "OTA Live Key",
+   "unique": 1,
+   "read_only": 1,
+   "hidden": 1,
+   "description": "property and OTA reference while this stay is not cancelled and not a group room that shares the reference. Empty otherwise, so a duplicate delivery cannot insert a second live stay."
+  },
+  {
    "description": "Caller-supplied key so duplicate public/OTA book requests return the same reservation (ADR-007).",
    "fieldname": "idempotency_key",
    "fieldtype": "Data",
@@ -289,6 +305,26 @@
    "fieldname": "actual_check_out",
    "fieldtype": "Datetime",
    "label": "Actual Check Out",
+   "read_only": 1
+  },
+  {
+   "fieldname": "check_out_business_date",
+   "fieldtype": "Date",
+   "label": "Check-out Business Date",
+   "read_only": 1,
+   "description": "The business date the guest checked out on: a checkout can be undone only until it moves on"
+   },
+   {
+   "fieldname": "booked_check_out_date",
+   "fieldtype": "Date",
+   "label": "Booked Check Out",
+   "read_only": 1,
+   "description": "The departure date before an early check-out shortened the stay"
+  },
+  {
+   "fieldname": "early_departure_reason",
+   "fieldtype": "Small Text",
+   "label": "Early Departure Reason",
    "read_only": 1
   },
   {
@@ -421,6 +457,14 @@
    "options": "Individual\nGroup\nCorporate"
   },
   {
+   "fieldname": "market_segment",
+   "fieldtype": "Select",
+   "label": "Market Segment",
+   "options": "\nCorporate\nLeisure\nGroup\nMICE\nGovernment\nWedding\nLong Stay\nAirline Crew\nComplimentary\nHouse Use",
+   "in_standard_filter": 1,
+   "description": "Who the business is (corporate, leisure, group…), for revenue reports by segment"
+  },
+  {
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "Company",
@@ -431,6 +475,22 @@
    "fieldtype": "Link",
    "label": "Group Booking",
    "options": "Group Booking"
+  },
+  {
+   "description": "A trip across several properties: this stay is one leg of it",
+   "fieldname": "itinerary",
+   "fieldtype": "Link",
+   "label": "Itinerary",
+   "options": "Itinerary",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "default": "0",
+   "description": "Group stay: this room's charges stay on its own bill, not the main room's",
+   "fieldname": "pays_own_charges",
+   "fieldtype": "Check",
+   "label": "Pays Own Charges"
   },
   {
    "fieldname": "meal_plan",
@@ -885,7 +945,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-25 12:00:00.000000",
+ "modified": "2026-10-29 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Kamra",
  "name": "Reservation",

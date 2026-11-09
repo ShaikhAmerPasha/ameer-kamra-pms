@@ -34,11 +34,14 @@ Revenue Dashboard** (also under **Reports**). **This property** shows:
   open folios);
 - **Statistics (month to date)**: occupancy, revenue, ADR, RevPAR and
   rooms sold;
+- **This year against last year**: occupancy, rooms sold, room and total
+  revenue, ADR and RevPAR for **Today**, **Month to date**, **Year to
+  date** or **Next 90 days**, with the change in percent;
 - **Housekeeping**: clean, dirty, inspected and out-of-order rooms, open
   and overdue tasks;
 - **Finance**: collected today, outstanding and open folios.
 
-![The property dashboard: headline tiles, month-to-date statistics, and the Housekeeping and Finance panels](/img/reports/dashboard.png)
+![The Revenue Dashboard: headline tiles, month-to-date statistics, and this year against last year](/img/reports/dashboard.png)
 
 **All properties** (shown when you have more than one property, for
 Finance, Revenue Manager and Hotel Admin) rolls the same numbers up across
@@ -47,22 +50,50 @@ departures, in-house, revenue, collected and outstanding for each hotel.
 
 ![The portfolio dashboard: properties, occupancy, arrivals, in-house, revenue and collections across three properties, and the By property table](/img/reports/portfolio.png)
 
+## Check the hotel on your phone
+
+**Reports → Owner view** (also under **Revenue** and **Finance**, or
+search for "owner") is one column made for a phone. Pick **Today**,
+**Yesterday** or **Month to date** and it shows:
+
+- **Revenue** for the period, with occupancy, rooms sold, ADR and RevPAR,
+  and the split between rooms, food and beverage, and other income;
+- **Guests**: arrivals, departures, in house and no-shows;
+- **Money**: what was collected (by payment mode), what guests still owe
+  on open bills, and what companies owe on the city ledger, with the
+  overdue part;
+- **Next 7 days**: how full each night is from bookings on hand;
+- **Night audits**: the last five, each opening its audit pack.
+
+The figures are the manager flash's, so the two always agree. If you have
+more than one property, the list at the top switches hotel, and **All
+properties, today** shows each one's occupancy, revenue, collections and
+outstanding. The owner view is for Finance, Revenue Manager, Night
+Auditor and Hotel Admin; the front desk can't open it. Revenue Managers
+see everything except the audit packs.
+
+![The owner view on a phone: revenue with occupancy, ADR and RevPAR, guests, money collected and owed, the next 7 days and the last night audits](/img/reports/owner-view.png)
+
+Tip: add the page to your phone's home screen from the browser's share
+menu to open it like an app.
+
 ## Build a custom report
 
 Open **Reports → Custom reports**. You build a report from a **dataset**:
 arrivals, departures, in-house, no-shows and cancellations, occupancy by
 day, folio charges, payments, voids, contribution, housekeeping tasks,
-room status, lost and found, and POS orders. You only see the datasets
+room status, lost and found, POS orders and kitchen times. You only see the datasets
 your role can open (see [Who sees which report](#who-sees-which-report)).
 
 1. Open **New report**, pick a dataset, choose columns and optional
    filters, set the date range (up to 92 days), and press **Preview**.
 2. **Save** to keep the definition under **My reports**. Finance and
    Hotel Admin can **share** a report with the property and set a
-   **Daily** or **Weekly** email schedule (recipients + time).
+   **Daily** or **Weekly** email schedule (recipients + time), or
+   **After night audit**: sent as soon as the audit closes the day.
 3. **CSV**, **Print** and **Email** work for new or saved reports.
-   Scheduled sends attach yesterday (or the last 7 days for weekly) as
-   CSV.
+   Scheduled sends attach yesterday (or the last 7 days for weekly, or
+   the day just closed for after night audit) as CSV.
 
 ### Group and drill down
 
@@ -83,7 +114,7 @@ on one page:
 |---|---|
 | **Front Office pack** | Occupancy by day, arrivals by source, in house by room type, no-shows and cancellations |
 | **Housekeeping pack** | Room status now, tasks by type and by attendant with average clean minutes, lost and found |
-| **F&B pack** | Sales and covers by outlet, orders by status |
+| **F&B pack** | Sales and covers by outlet, orders by status, items sold, kitchen turnaround |
 | **Hotel Manager pack** | Occupancy and revenue, revenue by source, collections by mode, charges by type, voids and allowances |
 
 1. Set the **From** and **To** dates.
@@ -110,6 +141,7 @@ someone a report their role can't open.
 | Night Auditor | Manager flash, shift report | Arrivals, departures, in-house, no-shows, occupancy, folio charges, payments | Front Office, Hotel Manager |
 | Finance | Manager flash, shift report, voids, F&B dashboard, wastage, banquet registers | Front office datasets, folio charges, payments, voids, contribution, POS orders | Front Office, F&B, Hotel Manager |
 | Housekeeping, Housekeeping Supervisor | None | Housekeeping tasks, room status, lost and found | Housekeeping |
+| F&B Manager | F&B dashboard, wastage | POS orders, POS items, kitchen times | F&B |
 
 Hotel Admin sees everything. A dataset also needs its module switched on
 for the property (**Settings → Modules**).

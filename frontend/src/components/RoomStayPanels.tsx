@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { call } from "../lib/api"
 import { serverError } from "../lib/resource"
-import { fmtMoney, loadLocale, locale, useLocale } from "../lib/money"
+import { fmtMoney, loadLocale, locale, sellsAlcohol, useLocale } from "../lib/money"
 import { useCashierAuth } from "../lib/cashierAuth"
 import { useT, t as translate } from "../lib/i18n"
 import { cn } from "../lib/utils"
@@ -26,7 +26,7 @@ const CATEGORIES = [
 ]
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"]
 const CHARGE_TYPES = [
-  "Food & Beverage", "Minibar", "Laundry", "Spa",
+  "Food & Beverage", "Minibar", "Laundry", "Spa", "Taxi",
   "Early Check-in", "Late Checkout", "Pet Charge", "Misc",
 ]
 
@@ -225,6 +225,8 @@ interface FolioRow {
   grand_total: number
   payments_total: number
   balance: number
+  /** the company a Company or Group bill goes to */
+  company?: string | null
 }
 
 interface FolioDoc {
@@ -341,6 +343,7 @@ export function StayBilling({ d, onChanged }: { d: RoomDetail; onChanged: () => 
               <span className="min-w-0">
                 <span className="block font-medium text-zinc-800">
                   {t("{type} folio", { type: t(f.folio_type) })}
+                  {f.company && ` · ${f.company}`}
                   {f.status === "Closed" && ` · ${t("Closed")}`}
                 </span>
                 <span className="block text-xs text-zinc-500">
@@ -441,6 +444,7 @@ export function StayBilling({ d, onChanged }: { d: RoomDetail; onChanged: () => 
             </select>
           </label>
         </div>
+        {sellsAlcohol() && (
         <label className="flex min-h-11 items-center gap-2 text-sm text-zinc-600">
           <input
             type="checkbox"
@@ -449,7 +453,7 @@ export function StayBilling({ d, onChanged }: { d: RoomDetail; onChanged: () => 
             onChange={(e) => setCharge({ ...charge, is_alcohol: e.target.checked })}
           />
           {t("Alcohol")}
-        </label>
+        </label>)}
         <p className="text-xs text-zinc-400">
           {t("The hotel's billing rules pick the folio, and food and drink take the hotel's food tax rate.")}
         </p>
@@ -487,7 +491,7 @@ export function StayBilling({ d, onChanged }: { d: RoomDetail; onChanged: () => 
               >
                 {(folios ?? []).map((f) => (
                   <option key={f.name} value={f.name}>
-                    {t("{type} folio", { type: t(f.folio_type) })} · {fmtMoney(f.balance)}
+                    {t("{type} folio", { type: t(f.folio_type) })}{f.company ? ` · ${f.company}` : ""} · {fmtMoney(f.balance)}
                   </option>
                 ))}
               </select>

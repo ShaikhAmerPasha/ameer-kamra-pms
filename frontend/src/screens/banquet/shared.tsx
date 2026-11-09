@@ -159,14 +159,11 @@ export const SERVICE_STYLES = [
   "Boxed",
   "Cocktail",
 ]
-/** Banquet receipt modes, minus UPI where the country pack has no UPI. */
-export const payModes = () =>
-  PAY_MODES.filter((m) => m !== "UPI" || locale().payment_modes.includes("UPI"))
-
-export const PAY_MODES = [
+/** Banquet receipt modes, with the country's instant modes after Card. */
+export const payModes = () => [
   "Cash",
   "Card",
-  "UPI",
+  ...(locale().instant_payment_modes ?? []),
   "Bank Transfer",
   "Cheque",
   "Other",
@@ -178,11 +175,7 @@ export const inputCls =
 
 export const today = () => new Date().toISOString().slice(0, 10)
 
-export function shiftDate(date: string, by: number) {
-  const d = new Date(date + "T00:00:00")
-  d.setDate(d.getDate() + by)
-  return d.toISOString().slice(0, 10)
-}
+export { shiftDate } from "../../lib/stay"
 
 export const dayName = (d: string) =>
   new Date(d + "T00:00:00").toLocaleDateString(uiDateLocale("en-US"), { weekday: "short" })

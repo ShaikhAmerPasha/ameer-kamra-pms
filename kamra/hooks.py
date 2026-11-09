@@ -32,22 +32,30 @@ scheduler_events = {
 			"kamra.channel_manager.push_all_ari",
 			# custom reports with Daily/Weekly email schedule
 			"kamra.custom_reports.run_scheduled_custom_reports",
+			# online exchange rates for the business date (off unless a
+			# property turns on fx_auto_fetch; only fills missing rates)
+			"kamra.ledger.auto_fetch_exchange_rates",
 		],
-		# 03:00 site time, daily - the night audit closes the day
-		"0 3 * * *": ["kamra.folio.nightly_audit_all_properties"],
 		# 09:00 - send self check-in links to upcoming arrivals, for properties
 		# that turned the setting on (a plain automation, not an agent)
-		"0 9 * * *": ["kamra.prearrival.run_prearrival_outreach"],
+		# (and company payment reminders, off unless a property turns them on)
+		"0 9 * * *": ["kamra.prearrival.run_prearrival_outreach",
+		              "kamra.statements.run_payment_reminders"],
 		# every 15 min - escalate overdue housekeeping tasks up the ladder;
 		# also release expired Held / Pending Payment reservations (ADR-006)
 		# and, past the property's release time, today's non-guaranteed
 		# arrivals (no-show policy, off unless a release time is set)
+		# also close the day: the night audit runs per property at its own
+		# night_audit_time on its own clock (default 03:00), one date a tick
 		"*/15 * * * *": [
+			"kamra.folio.nightly_audit_all_properties",
 			"kamra.housekeeping.escalate_overdue_tasks",
 			"kamra.reservation_state.expire_holds",
 			# group blocks past their cutoff give unpicked rooms back to sale
 			"kamra.group_blocks.release_expired_blocks",
 			"kamra.no_show.release_non_guaranteed_arrivals",
+			# day-use past planned ETD → front-desk bell once per stay
+			"kamra.day_use.alert_overdue_day_use",
 		],
 		# 08:30 - the banquet team's morning list: follow-ups gone quiet,
 		# tentative holds about to lapse, payments due, event orders missing
@@ -64,6 +72,8 @@ scheduler_events = {
 		# 03:50 - finished kitchen print jobs (guest names on the ticket)
 		# are kept a week for reprints, then dropped
 		"50 3 * * *": ["kamra.printing.purge_old_jobs"],
+		# 03:55 - bell notifications are kept 30 days, then dropped
+		"55 3 * * *": ["kamra.notifications.purge_old"],
 		# 04:45 - drop old kamrapms.com Hosting Enquiry leads (default 24 months;
 		# Won / converted stays; site_config hosting_enquiry_retention_months)
 		"45 4 * * *": ["kamra.hosting_enquiry_retention.purge_expired_hosting_enquiries"],
@@ -95,6 +105,9 @@ kamra_localization = {
 	"Malaysia": "kamra.localization.malaysia",
 	"United Arab Emirates": "kamra.localization.uae",
 	"Saudi Arabia": "kamra.localization.saudi",
+	"Brazil": "kamra.localization.brazil",
+	"Brasil": "kamra.localization.brazil",
+	"Nicaragua": "kamra.localization.nicaragua",
 }
 
 # Served single-page app
@@ -240,35 +253,37 @@ after_migrate = ["kamra.install.after_migrate"]
 # Every Kamra DocType linking a Property fails closed under the opt-in
 # kamra_strict_property_scope site setting; with it off these add nothing.
 _PROPERTY_SCOPED = (
-	"Agent Action Log", "AI Assistant Settings", "Banquet Checklist Template",
+	"Agent Action Log", "AI Assistant Settings", "Allowance Request", "Banquet Checklist Template",
 	"Banquet Dish", "Banquet Function Task", "Banquet Menu",
 	"Banquet Service Item", "Cancelled Invoice", "Cash Transfer", "Cashier", "Cashier Session", "Cashier Terminal",
 	"Cashier Transaction", "Channel Manager Connection",
 	"Channel Provider Connection", "City Ledger Account", "City Ledger Entry",
 	"Copilot Conversation", "Credit Note", "Discount Voucher", "Exchange Rate",
-	"Exchange Transaction", "Experience", "External POS Charge", "Folio", "Folio Ledger Entry",
+	"Exchange Transaction", "Experience", "External POS Charge", "Floor", "Folio", "Folio Ledger Entry",
 	"Folio Reprint", "Group Booking", "Housekeeping Task", "Hurdle Rate",
-	"Ingredient", "Ingredient Ledger Entry", "Ingredient Stock", "Kitchen Printer",
+	"Ingredient", "Ingredient Ledger Entry", "Ingredient Stock", "Kamra Custom Report", "Kamra Notification", "Kitchen Printer",
 	"Laundry Order", "Laundry Rate", "Lost And Found Item", "MCP OAuth Grant",
-	"Meal Plan", "Menu Item", "Night Audit Run", "Outbound Webhook",
+	"Meal Plan", "Menu Item", "Night Audit Log", "Night Audit Run", "Outbound Webhook",
 	"Outbound Webhook Delivery", "Payment Gateway Settings",
 	"Petty Cash Voucher", "POS Order", "POS Outlet", "POS Table Reservation",
 	"Print Job",
 	"Proforma Folio", "Property Setting", "Rate Guardrail", "Rate Plan",
 	"Reservation",
-	"Revenue Budget", "Room", "Room Block", "Room Type", "Season",
+	"Long Stay Discount", "Revenue Budget", "Room", "Room Block", "Room Type", "Season",
 	"Security Deposit", "Sellable Unit", "Service Ticket", "Shift Handover", "SOP Template", "Ticket Event",
-	"Transaction Code", "Turnover Profile", "Venue", "Venue Booking",
+	"Transaction Code", "Turnover Profile", "Vendor", "Vendor Bill", "Venue", "Venue Booking",
 	"WhatsApp Message", "ZATCA Invoice", "ZATCA Settings",
 )
 
 permission_query_conditions = {
 	"Guest": "kamra.authz.guest_query_conditions",
+	"Itinerary": "kamra.authz.itinerary_query_conditions",
 	**{dt: "kamra.authz.property_query_conditions" for dt in _PROPERTY_SCOPED},
 }
 
 has_permission = {
 	"Guest": "kamra.authz.guest_has_permission",
+	"Itinerary": "kamra.authz.itinerary_has_permission",
 	**{dt: "kamra.authz.property_has_permission" for dt in _PROPERTY_SCOPED},
 }
 
@@ -284,8 +299,32 @@ doc_events = {
 	}
 	for doctype in ("Reservation", "Folio", "Room", "Housekeeping Task",
 	                "Venue Booking", "Group Booking", "POS Order",
-	                "Service Ticket", "Agent Action Log")
+	                "Service Ticket", "Laundry Order", "Agent Action Log")
 }
+
+# The notification bell (kamra.notifications): a short line for the module
+# that should know, written next to the realtime ping. The bell itself
+# re-fetches when a new Kamra Notification is pinged.
+for _dt, _events in {
+	"Folio": {"on_update": "on_folio_update"},
+	"Housekeeping Task": {"after_insert": "on_housekeeping_task_insert",
+	                      "on_update": "on_housekeeping_task_update"},
+	"Ingredient Ledger Entry": {"after_insert": "on_ingredient_ledger_insert"},
+	"Laundry Order": {"after_insert": "on_laundry_order_insert"},
+	"POS Order": {"after_insert": "on_pos_order_insert",
+	              "on_update": "on_pos_order_update"},
+	"Rate Plan": {"on_update": "on_rate_plan_update"},
+	"Room Type": {"on_update": "on_room_type_update"},
+	"Season": {"after_insert": "on_season_change", "on_update": "on_season_change"},
+	"Service Ticket": {"after_insert": "on_service_ticket_insert",
+	                   "on_update": "on_service_ticket_update"},
+	"Venue Booking": {"after_insert": "on_venue_booking_insert",
+	                  "on_update": "on_venue_booking_update"},
+}.items():
+	for _event, _fn in _events.items():
+		_have = doc_events.setdefault(_dt, {}).get(_event)
+		doc_events[_dt][_event] = ([_have] if _have else []) + [f"kamra.notifications.{_fn}"]
+doc_events["Kamra Notification"] = {"after_insert": "kamra.realtime.notify"}
 
 # A reservation booked/modified/cancelled moves availability, so fan the new
 # numbers out to the channel manager (Pipeline 1). Runs alongside the realtime
@@ -296,10 +335,12 @@ doc_events = {
 doc_events["Reservation"] = {
 	"after_insert": ["kamra.realtime.notify",
 	                 "kamra.channel_manager.on_reservation_change",
-	                 "kamra.webhooks.on_reservation_insert"],
+	                 "kamra.webhooks.on_reservation_insert",
+	                 "kamra.notifications.on_reservation_insert"],
 	"on_update": ["kamra.realtime.notify",
 	              "kamra.channel_manager.on_reservation_change",
-	              "kamra.webhooks.on_reservation_update"],
+	              "kamra.webhooks.on_reservation_update",
+	              "kamra.notifications.on_reservation_update"],
 	"on_trash": "kamra.realtime.notify",
 }
 
@@ -340,9 +381,14 @@ doc_events["Reservation"] = {
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "kamra.event.get_events"
-# }
+# Frappe's setup wizard writes settings and a System Manager user; on a Kamra
+# site only a System Manager may call it (see kamra.setup_guard).
+override_whitelisted_methods = {
+	"frappe.desk.page.setup_wizard.setup_wizard.setup_complete":
+		"kamra.setup_guard.setup_complete",
+	"frappe.desk.page.setup_wizard.setup_wizard.initialize_system_settings_and_user":
+		"kamra.setup_guard.initialize_system_settings_and_user",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
@@ -376,7 +422,7 @@ before_request = [
 	# the public demo shows the maintenance page while it rebuilds
 	"kamra.demo_guard.block_while_rebuilding",
 ]
-# after_request = ["kamra.utils.after_request"]
+after_request = ["kamra.mcp_http.after_request"]
 
 # Job Events
 # ----------
@@ -410,9 +456,7 @@ before_request = [
 # Authentication and authorization
 # --------------------------------
 
-# auth_hooks = [
-# 	"kamra.auth.validate"
-# ]
+auth_hooks = ["kamra.mcp_http.authenticate"]
 
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True

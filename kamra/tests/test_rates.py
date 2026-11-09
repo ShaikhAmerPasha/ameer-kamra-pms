@@ -77,3 +77,75 @@ class RatesTestCase(AuditTestCase):
 		out = rates.rate_options(PROP_A, self.rt, self.day, self.next, voucher_code="NOPE")
 		self.assertFalse(out["voucher"]["valid"])
 		self.assertIn("does not exist", out["voucher"]["reason"])
+
+	def test_quote_occupancy_breakdown_and_edge_cases(self):
+		"""Edge cases for occupancy: 1 pax (single discount/base), 2 pax (base),
+		4 pax (extra adults), 5 pax (extra adult + extra bed), and over-capacity."""
+		rt_doc = frappe.get_doc("Room Type", self.rt)
+		rt_doc.base_occupancy = 2
+		rt_doc.base_price = 200
+		rt_doc.adults_capacity = 4
+		rt_doc.extra_adult_price = 80
+		rt_doc.max_extra_beds = 1
+		rt_doc.extra_bed_price = 50
+		rt_doc.single_occupancy_price = 180
+		rt_doc.tax_percent = 5
+		rt_doc.save(ignore_permissions=True)
+
+		# 1 Adult: single occupancy rate (180 + 5% tax = 189)
+		q1 = pricing.quote(PROP_A, self.rt, self.day, self.next, adults=1, children=0)
+		self.assertEqual(q1["room_total"], 180.0)
+		self.assertEqual(q1["totals"]["total"], 189.0)
+
+		# 2 Adults: exact base occupancy (200 + 5% tax = 210)
+		q2 = pricing.quote(PROP_A, self.rt, self.day, self.next, adults=2, children=0)
+		self.assertEqual(q2["room_total"], 200.0)
+		self.assertEqual(q2["totals"]["total"], 210.0)
+
+		# 4 Adults: base 200 + 2 extra adults @ 80 = 360 (+ 5% tax 18 = 378)
+		q4 = pricing.quote(PROP_A, self.rt, self.day, self.next, adults=4, children=0)
+		self.assertEqual(q4["room_total"], 360.0)
+		self.assertEqual(q4["totals"]["total"], 378.0)
+
+		# 5 Adults: above capacity. The quote prices the room for its 4; the
+		# guest over capacity is charged by the caller's over_capacity_charge
+		q5 = pricing.quote(PROP_A, self.rt, self.day, self.next, adults=5, children=0)
+		self.assertEqual(q5["room_total"], 360.0)
+		self.assertEqual(q5["totals"]["total"], 378.0)
+		q5b = pricing.quote(PROP_A, self.rt, self.day, self.next, adults=5, children=0,
+		                    over_capacity_charge=50)
+		self.assertEqual(q5b["totals"]["total"], 430.5)  # (360 + 50) + 5% tax
+
+	def test_holiday_package_rate_integration(self):
+		"""Holiday Package overrides base rate with tiered occupancy pricing (e.g. 1850 for 2, 2500 for 3)."""
+		day2 = str(add_days(self.day, 2))
+		day3 = str(add_days(self.day, 3))
+		frappe.get_doc({
+			"doctype": "Holiday Package",
+			"property": PROP_A,
+			"package_name": "Pacote Feriado 3N",
+			"room_type": self.rt,
+			"start_date": self.day,
+			"end_date": day2,
+			"minimum_nights": 3,
+			"price_2_pax": 1850,
+			"price_3_pax": 2500,
+			"price_4_pax": 3000,
+			"ota_strategy": "Markup",
+			"ota_daily_rate": 1300,
+		}).insert(ignore_permissions=True)
+
+		# 2 pax -> 1850
+		q2 = pricing.quote(PROP_A, self.rt, self.day, day3, adults=2, children=0)
+		self.assertEqual(q2["room_total"], 1850.0)
+		self.assertEqual(q2["package"]["package_name"], "Pacote Feriado 3N")
+		self.assertEqual(q2["package"]["ota_daily_rate"], 1300.0)
+
+		# 3 pax -> 2500
+		q3 = pricing.quote(PROP_A, self.rt, self.day, day3, adults=3, children=0)
+		self.assertEqual(q3["room_total"], 2500.0)
+
+		# 4 pax -> 3000
+		q4 = pricing.quote(PROP_A, self.rt, self.day, day3, adults=4, children=0)
+		self.assertEqual(q4["room_total"], 3000.0)
+

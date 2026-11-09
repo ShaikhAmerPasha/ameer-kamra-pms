@@ -26,9 +26,11 @@ import {
   HeartPulse,
   Home,
   Landmark,
+  Layers,
   LayoutGrid,
   ListChecks,
   ListTodo,
+  Package,
   PackageSearch,
   Boxes,
   Printer,
@@ -67,6 +69,9 @@ import {
   DoorOpen,
   Hash,
   ListOrdered,
+  HandCoins,
+  CalendarClock,
+  Scale,
 } from "lucide-react"
 
 /** "Night audit" is what most hotels call End of Day; EOD is what they type. */
@@ -121,14 +126,19 @@ export const APPS: AppDef[] = [
         keywords: ["Arrivals", "Departures", "In-house guests", "Who is in", "Due out"] },
       { to: "/reservations", label: "Reservations", icon: ClipboardList },
       { to: "/tape", label: "Tape Chart", icon: LayoutGrid },
-      { to: "/room-board", label: "Rooms", icon: DoorOpen,
-        keywords: ["Room board", "Room status", "Out of order", "Room history"] },
-      { to: "/guests", label: "Guests", icon: Users },
+      { to: "/room-board", label: "Room Board", icon: DoorOpen,
+        keywords: ["Rooms", "Room status", "Out of order", "Room history"] },
+      { to: "/guests", label: "Guest History", icon: Users,
+        keywords: ["Guests", "Guest profiles", "Past guests"] },
+      { to: "/billing", label: "Billing", icon: Receipt,
+        keywords: ["Folios", "Bills", "Invoices"] },
       { to: "/end-of-day", label: "Night Audit", icon: MoonStar,
         keywords: EOD_KEYWORDS },
       { to: "/calendar", label: "Calendar", icon: CalendarDays },
       { to: "/crs", label: "Central Reservations", icon: Search },
       { to: "/room-blocks", label: "Room Blocks", icon: Lock },
+      { to: "/groups", label: "Group Booking", icon: Users,
+        keywords: ["Groups", "Group bookings", "Rooming list", "Blocks"] },
       { to: "/reports", label: "Reports", icon: ChartLine },
       { to: "/settings/front-desk", label: "Settings", icon: SettingsIcon,
         roles: ["Hotel Admin", "System Manager", "Administrator"] },
@@ -148,13 +158,14 @@ export const APPS: AppDef[] = [
     items: [
       // the board is oversight - supervisors and the desk; attendants work
       // from their task list and the phone app
-      { to: "/housekeeping-board", label: "Room Board", icon: LayoutGrid,
+      { to: "/housekeeping-board", label: "Housekeeping Board", icon: LayoutGrid,
+        keywords: ["Room status", "Dirty rooms", "Assign rooms", "HK board"],
         roles: ["Housekeeping Supervisor", "Front Desk", "Hotel Admin",
                 "System Manager", "Administrator"] },
-      { to: "/room-board", label: "Rooms", icon: DoorOpen,
+      { to: "/room-board", label: "Room Board", icon: DoorOpen,
         roles: ["Housekeeping Supervisor", "Front Desk", "Hotel Admin",
                 "System Manager", "Administrator"],
-        keywords: ["Room history", "Who cleaned", "Room insights"] },
+        keywords: ["Rooms", "Room history", "Who cleaned", "Room insights"] },
       { to: "/housekeeping", label: "Tasks", icon: ListChecks },
       { to: "/laundry", label: "Laundry", icon: Shirt },
       { to: "/lost-found", label: "Lost & Found", icon: PackageSearch },
@@ -188,7 +199,7 @@ export const APPS: AppDef[] = [
     icon: UtensilsCrossed,
     tint: APP_TILE,
     description: "Restaurant POS, kitchen display, the menu and kitchen stock.",
-    roles: ["Front Desk", "Finance", "Hotel Admin", "System Manager", "Administrator"],
+    roles: ["Front Desk", "Finance", "F&B Manager", "Hotel Admin", "System Manager", "Administrator"],
     items: [
       { to: "/pos", label: "Restaurant POS", icon: UtensilsCrossed },
       { to: "/pos-dashboard", label: "F&B Dashboard", icon: TrendingUp },
@@ -200,8 +211,9 @@ export const APPS: AppDef[] = [
       { to: "/outlets", label: "Outlets", icon: Store },
       { to: "/printers", label: "Printers", icon: Printer,
         keywords: ["Kitchen printers", "KOT", "Print station", "Thermal"] },
+      { to: "/reports", label: "Reports", icon: ChartLine },
       { to: "/settings/fnb", label: "Settings", icon: SettingsIcon,
-        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
+        roles: ["Finance", "F&B Manager", "Hotel Admin", "System Manager", "Administrator"] },
     ],
   },
   {
@@ -236,6 +248,8 @@ export const APPS: AppDef[] = [
     items: [
       { to: "/dashboard", label: "Revenue Dashboard", icon: LayoutDashboard,
         keywords: ["Dashboard", "KPIs", "ADR", "RevPAR", "Portfolio"] },
+      { to: "/owner", label: "Owner view", icon: Smartphone,
+        keywords: ["Phone", "Mobile", "Owner", "Flash", "MTD"] },
       { to: "/reports", label: "Reports", icon: ChartLine },
       { to: "/channel-manager", label: "Channel Manager", icon: Share2 },
       { to: "/ota-mappings", label: "OTA Room Mappings", icon: Network },
@@ -243,14 +257,19 @@ export const APPS: AppDef[] = [
         keywords: ["bar", "best available rate", "base rate", "rack rate", "tariff", "pricing", "price by date"] },
       { to: "/rate-plans", label: "Rate Plans", icon: Tags },
       { to: "/seasons", label: "Seasons", icon: CalendarDays },
+      { to: "/packages", label: "Packages", icon: Package,
+        keywords: ["holiday package", "pacote", "carnaval", "reveillon", "special offer", "feriado", "closed package"] },
       { to: "/guardrails", label: "Guardrails", icon: ShieldCheck },
       { to: "/vouchers", label: "Vouchers", icon: BadgePercent },
+      { to: "/long-stay", label: "Long-stay Discounts", icon: BadgePercent,
+        keywords: ["length of stay", "LOS", "weekly", "monthly", "extended stay"] },
       { to: "/meal-plans", label: "Meal Plans", icon: UtensilsCrossed },
       { to: "/experiences", label: "Experiences", icon: Compass },
       // also in Admin: Room Types hold the base rates revenue works from
       { to: "/room-types", label: "Room Types", icon: LayoutGrid },
       { to: "/travel-agents", label: "Travel Agents", icon: Briefcase },
-      { to: "/companies", label: "Companies", icon: Building2 },
+      { to: "/companies", label: "Accounts Receivable", icon: Building2,
+        keywords: ["Companies", "Corporate accounts", "Credit", "AR"] },
       { to: "/settings/revenue", label: "Settings", icon: SettingsIcon,
         roles: ["Revenue Manager", "Hotel Admin", "System Manager", "Administrator"] },
     ],
@@ -277,11 +296,26 @@ export const APPS: AppDef[] = [
       // Billing
       { to: "/end-of-day", label: "Night Audit", icon: MoonStar, group: "Billing",
         keywords: EOD_KEYWORDS },
+      { to: "/owner", label: "Owner view", icon: Smartphone, group: "Billing",
+        keywords: ["Phone", "Mobile", "Owner", "Flash", "MTD"],
+        roles: ["Finance", "Night Auditor", "Hotel Admin", "System Manager", "Administrator"] },
       { to: "/billing", label: "Billing", icon: Receipt, group: "Billing" },
       { to: "/folio-history", label: "Folio History", icon: History, group: "Billing" },
-      { to: "/laundry", label: "Laundry", icon: Shirt, group: "Billing" },
+      { to: "/allowances", label: "Allowances to approve", icon: ListChecks, group: "Billing",
+        keywords: ["Allowance approval", "Write-off", "Manager approval"] },
       // Books
+      { to: "/receivables", label: "Receivables", icon: Building2, group: "Books",
+        keywords: ["AR", "Accounts receivable", "City ledger", "Direct bill", "Company invoice"] },
       { to: "/ledgers", label: "Ledgers", icon: BookOpen, group: "Books" },
+      { to: "/payables", label: "Payables", icon: HandCoins, group: "Books",
+        keywords: ["Accounts payable", "Vendors", "Suppliers", "Supplier bills"],
+        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
+      { to: "/cash-forecast", label: "Cash outlook", icon: CalendarClock, group: "Books",
+        keywords: ["Cash flow", "Working capital", "Cash forecast", "Next 5 days"],
+        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
+      { to: "/profit-and-loss", label: "Profit and loss", icon: Scale, group: "Books",
+        keywords: ["P&L", "Balance sheet", "Expenses"],
+        roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
       { to: "/transaction-codes", label: "Transaction Codes", icon: Hash, group: "Books",
         keywords: ["Txn codes", "Revenue group", "Chart of accounts"],
         roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
@@ -294,9 +328,9 @@ export const APPS: AppDef[] = [
         roles: ["Finance", "Hotel Admin", "System Manager", "Administrator"] },
     ],
     extraPrefixes: [
-      "/billing/", "/cashier/", "/ledgers", "/folio-history",
+      "/billing/", "/cashier/", "/ledgers", "/receivables", "/folio-history",
       "/end-of-day", "/night-audit", "/reason-codes", "/transaction-codes",
-      "/voids-allowances",
+      "/voids-allowances", "/balance-sheet", "/allowances",
     ],
   },
   {
@@ -331,8 +365,12 @@ export const APPS: AppDef[] = [
     items: [
       { to: "/settings/general", label: "Settings", icon: SettingsIcon },
       { to: "/health", label: "System Health", icon: HeartPulse },
-      { to: "/rooms", label: "Rooms", icon: BedDouble },
+      // the setup trio, in the order you set a property up
+      { to: "/floors", label: "Floors", icon: Layers,
+        keywords: ["Floor order", "Storeys", "Levels"] },
       { to: "/room-types", label: "Room Types", icon: LayoutGrid },
+      { to: "/rooms", label: "Rooms", icon: BedDouble,
+        keywords: ["Add rooms", "Room setup", "Floors", "Room numbers"] },
       { to: "/activity", label: "Activity Log", icon: ScrollText },
       { to: "/marketplace", label: "Marketplace", icon: Store },
       {
@@ -365,7 +403,7 @@ export const APPS: AppDef[] = [
 ]
 
 /** Which app owns a path? Longest matching item route wins; "/" only exact.
- *  A page listed in two apps (End of Day, Laundry, Room Types) belongs to
+ *  A page listed in two apps (End of Day, Room Types) belongs to
  *  the first one *among* the apps given - pass the user's visible apps so
  *  the page opens inside an app they can actually see. */
 export function appForPath(pathname: string, among: AppDef[] = APPS, keep?: string): AppDef {

@@ -44,6 +44,7 @@ from frappe.utils import (
 )
 
 from kamra.authz import require_roles
+from kamra.localization import money_text
 from kamra.settings import get_setting
 
 # who sells and runs functions
@@ -796,6 +797,8 @@ def record_receipt(function: str, amount: float, mode: str = "Bank Transfer",
 	if kind not in ("Advance", "Payment", "Security Deposit", "Refund"):
 		frappe.throw(_("Unknown receipt kind: {0}").format(kind))
 	doc = _fn(function)
+	from kamra.localization import assert_payment_mode
+	assert_payment_mode(doc.property, mode)
 	from kamra.business_date import assert_transaction_date
 	rd = assert_transaction_date(doc.property, receipt_date, label="Receipt date")
 	doc.append("receipts", {
@@ -813,8 +816,9 @@ def record_receipt(function: str, amount: float, mode: str = "Bank Transfer",
 	doc.save()
 	from kamra.savings import log_action
 	log_action("banquet_receipt", "Venue Booking", doc.name, doc.property,
-	           rationale=f"{kind} ₹{float(amount):,.0f} ({mode}) for "
-	                     f"{doc.customer_name} - balance ₹{doc.balance_due:,.0f}")
+	           rationale=f"{kind} {money_text(doc.property, round(float(amount)))} ({mode}) for "
+	                     f"{doc.customer_name} - balance "
+	                     f"{money_text(doc.property, round(doc.balance_due or 0))}")
 	return {"ok": True, "received": doc.advance_received,
 	        "balance_due": doc.balance_due}
 
@@ -1209,7 +1213,7 @@ def banquet_document(function: str, kind: str = "quote"):
 		"Property", doc.property,
 		["property_name", "legal_name", "address_line", "city", "state",
 		 "pincode", "country", "phone", "email", "website", "gstin",
-		 "logo_url"], as_dict=True) or {}
+		 "logo_url", "invoice_footer"], as_dict=True) or {}
 	prop["address"] = ", ".join(filter(None, [  # nosemgrep: frappe-no-functional-code -- drops empty address parts
 		prop.get("address_line"), prop.get("city"), prop.get("state"),
 		prop.get("pincode")]))
@@ -1238,7 +1242,7 @@ def banquet_document(function: str, kind: str = "quote"):
 		"kind": kind,
 		"title": {"quote": _("Quotation"), "contract": _("Function Contract"),
 		          "beo": _("Banquet Event Order"), "pack_list": _("Pack List"),
-		          "invoice": _("Tax Invoice")}[kind],
+		          "invoice": _(loc.invoice_title(pack))}[kind],
 		"number": number,
 		"is_final": bool(number != doc.name),
 		"function": doc.name,
@@ -1251,6 +1255,7 @@ def banquet_document(function: str, kind: str = "quote"):
 		"amount_in_words": loc.amount_in_words(pack, prop_doc, doc.grand_total),
 		"service_code_label": (ctx.get("service_code") or {}).get("label", "SAC"),
 		"footer": ctx.get("footer"),
+		"invoice_footer": prop.get("invoice_footer"),
 		"place_of_supply": ctx.get("place_of_supply"),
 		"tax_label": ctx.get("tax_label"),
 		"tax_id_label": ctx.get("tax_id_label"),
@@ -1471,7 +1476,8 @@ def generate_quote(function: str, valid_days: int = 15,
 	log_action("banquet_quote", "Venue Booking", doc.name, doc.property,
 	           minutes_saved=20,
 	           rationale=f"Quote v{doc.quote_version} for {doc.customer_name}: "
-	                     f"₹{doc.grand_total:,.0f} ({len(doc.items)} lines)")
+	                     f"{money_text(doc.property, round(doc.grand_total or 0))} "
+	                     f"({len(doc.items)} lines)")
 	return banquet_document(function, "quote")
 
 
@@ -1521,7 +1527,8 @@ def generate_invoice(function: str):
 		log_action("banquet_invoice", "Venue Booking", doc.name, doc.property,
 		           minutes_saved=10,
 		           rationale=f"Invoice {doc.invoice_number} for "
-		                     f"{doc.customer_name}: ₹{doc.grand_total:,.0f}")
+		                     f"{doc.customer_name}: "
+		                     f"{money_text(doc.property, round(doc.grand_total or 0))}")
 	return banquet_document(function, "invoice")
 
 
@@ -1682,7 +1689,8 @@ def close_out(function: str, damage_amount: float = 0,
 	           minutes_saved=10,
 	           rationale=f"{doc.customer_name} closed out - "
 	                     f"{doc.billable_pax} actual pax, "
-	                     f"₹{damage:,.0f} damages, ₹{refund:,.0f} returned")
+	                     f"{money_text(doc.property, round(damage))} damages, "
+	                     f"{money_text(doc.property, round(refund))} returned")
 	return {"ok": True, "status": doc.status, "damage": damage,
 	        "refunded": refund, "deposit_held": doc.deposit_held,
 	        "balance_due": doc.balance_due, "grand_total": doc.grand_total}
@@ -2579,10 +2587,14 @@ def link_customer(function: str, guest: str | None = None):
 
 
 def _find_or_create_guest(doc):
-	"""Dedupe on the phone number, the way the front desk does."""
-	phone = (doc.customer_phone or "").strip()
+	"""Dedupe on the phone number, the way the front desk does: read with
+	the property's country (#468), as typed when it can't be read."""
+	from kamra import phone as phone_mod
+	typed = (doc.customer_phone or "").strip()
+	phone = phone_mod.for_property(typed, doc.property)[0]
 	if phone:
-		existing = frappe.db.get_value("Guest", {"phone": phone})
+		existing = frappe.db.get_value(
+			"Guest", {"phone": phone_mod.matching(typed, doc.property)})
 		if existing:
 			return existing
 	parts = (doc.customer_name or "Guest").strip().split(" ", 1)
@@ -2603,7 +2615,8 @@ def customer_profile(property: str, guest: str | None = None,
 	phone: what this client has run with us, what they spent, what they
 	usually book, and what's still owed."""
 	if not guest and phone:
-		guest = frappe.db.get_value("Guest", {"phone": phone.strip()})
+		from kamra import phone as phone_mod
+		guest = frappe.db.get_value("Guest", {"phone": phone_mod.matching(phone, property)})
 	if not guest:
 		return {"found": False}
 	# a phone lookup resolves to a guest the decorator never saw

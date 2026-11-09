@@ -67,13 +67,13 @@ and an accounting export for Tally, Zoho Books or ERPNext.
 
 ## Housekeeping
 
-A room board for supervisors and a phone app for floor staff: take a room
+The Housekeeping Board for supervisors and a phone app for floor staff: take a room
 from the pool, accept or decline, start, finish with a photo. Tasks have
 deadlines and escalate when they're late. Minibar posting, guest laundry
 from collection to folio, lost & found and shift handover are on the same
 screens.
 
-![The housekeeping room board](/img/housekeeping/room-board.png)
+![The Housekeeping Board](/img/housekeeping/room-board.png)
 
 [Housekeeping guide →](/housekeeping)
 
@@ -184,7 +184,9 @@ are refused.
 
 Guest erasure and access export, retention schedules for ID files and
 chat text, and a guest privacy notice in several Indian languages.
-Contact details are not sent to the AI provider.
+Contact details are not sent to the AI provider. Promotional WhatsApp
+goes only to guests who opted in, and a STOP reply opts them out
+([details](./whatsapp#marketing-consent-and-opt-out)).
 
 ## AI, done safely
 

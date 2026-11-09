@@ -6,10 +6,38 @@
 // (see kamra/www/kamra.py). Frappe enforces it on POSTs from a logged-in
 // session; guests and the dev server (ignore_csrf) don't need it.
 import { htmlToText } from "./utils"
+import { t as translate } from "./i18n"
 
 function csrfToken(): string | undefined {
   const t = (window as unknown as { csrf_token?: string }).csrf_token
   return t && t !== "None" ? t : undefined
+}
+
+/** Fetch the session's current CSRF token into window.csrf_token. Signing in
+ *  or out in another tab rotates it, and every POST from this tab is then
+ *  refused with a 400 CSRFTokenError until the token is refreshed. Resolves
+ *  false when there is no session any more. */
+async function refreshCsrfToken(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/method/kamra.api.csrf_token", { credentials: "include" })
+    const token = res.ok ? ((await res.json()) as { message?: string | null }).message : null
+    ;(window as unknown as { csrf_token?: string }).csrf_token = token ?? undefined
+    return Boolean(token)
+  } catch {
+    return false
+  }
+}
+
+const isCsrfError = (status: number, body: string) =>
+  status === 400 && body.includes("CSRFTokenError")
+
+// a sign-in or sign-out in one tab tells the others to take the new token
+const sessionChannel = typeof BroadcastChannel !== "undefined"
+  ? new BroadcastChannel("kamra-session") : null
+sessionChannel?.addEventListener("message", () => { void refreshCsrfToken() })
+function announceSessionChange() {
+  void refreshCsrfToken()
+  sessionChannel?.postMessage("changed")
 }
 
 /** Marks errors where the request never reached the server (offline, server
@@ -18,7 +46,7 @@ export function isNetworkError(err: unknown): boolean {
   return Boolean((err as { network?: boolean }).network)
 }
 
-async function doFetch(path: string, init?: RequestInit) {
+async function doFetch(path: string, init?: RequestInit, retried = false): Promise<any> { // eslint-disable-line @typescript-eslint/no-explicit-any -- whatever the method returns
   const token = csrfToken()
   const request = () =>
     fetch(path, {
@@ -51,6 +79,12 @@ async function doFetch(path: string, init?: RequestInit) {
   window.dispatchEvent(new Event("kamra:online"))
   if (!res.ok) {
     const body = await res.text()
+    // a stale CSRF token (a sign-in in another tab): take the current one
+    // and send it again once; no session left means sign in again
+    if (isCsrfError(res.status, body) && !retried) {
+      if (await refreshCsrfToken()) return doFetch(path, init, true)
+      window.dispatchEvent(new Event("kamra:auth-error"))
+    }
     // A 401/403 on anything other than the auth endpoints means the session may
     // be gone. Signal the auth layer to re-check (and redirect to /login if so)
     // instead of leaving a dead screen. Login's own 401 (wrong password) is
@@ -61,12 +95,56 @@ async function doFetch(path: string, init?: RequestInit) {
     ) {
       window.dispatchEvent(new Event("kamra:auth-error"))
     }
-    throw Object.assign(new Error(`${path} failed (${res.status})`), {
-      status: res.status,
-      body,
-    })
+    throw httpError(res.status, body)
   }
   return res.json()
+}
+
+/** An HTTP failure whose message is already safe to show (see serverError);
+ *  status and raw body ride along for callers that branch on them. */
+function httpError(status: number, body: string): Error {
+  const err = Object.assign(new Error(), { status, body })
+  err.message = serverError(err)
+  if (status >= 500) console.warn(`[kamra] server error ${status}`, body.slice(0, 2000))
+  return err
+}
+
+/** Turn any API failure into one short sentence for a person. Messages from
+ *  frappe.throw are written for users and pass through; tracebacks, Python
+ *  exception names and raw status lines never do. */
+export function serverError(e: unknown): string {
+  const { status, body, network } = e as { status?: number; body?: string; network?: boolean }
+  if (network) return translate((e as Error).message)
+  let parsed: { exc_type?: string; exception?: string; _server_messages?: string } = {}
+  try {
+    parsed = body ? JSON.parse(body) : {}
+  } catch {
+    /* not JSON (proxy error page) */
+  }
+  if (status === 401 || parsed.exc_type === "SessionExpired")
+    return translate("Your session ended. Please sign in again.")
+  // 5xx is an unhandled crash (frappe.throw answers 4xx): the text is internals
+  if (!status || status < 500) {
+    try {
+      const msgs = JSON.parse(parsed._server_messages ?? "[]")
+      const text = msgs.length ? htmlToText(String(JSON.parse(msgs[0]).message)).trim() : ""
+      if (text && !/Traceback|File ".*", line \d+/.test(text)) return translate(text)
+    } catch {
+      /* fall through */
+    }
+    // "frappe.exceptions.ValidationError: Room is occupied" -> "Room is occupied"
+    const exc = String(parsed.exception ?? "").replace(/^[\w.]+(Error|Exception):\s*/, "").trim()
+    if (exc && !/^[\w.]+$/.test(exc) && !exc.includes("Traceback")) return translate(exc)
+  }
+  if (status === 403)
+    return translate("You don't have permission for that, or your session ended - sign in again if this persists.")
+  if (status === 404) return translate("That record wasn't found - it may have been removed.")
+  if (status === 429) return translate("Too many requests - give it a few seconds and try again.")
+  if (status && status >= 500)
+    return translate("Something went wrong on the server. Try again in a moment.")
+  if (status) return translate("That didn't go through. Please try again.")
+  console.warn("[kamra] unexpected error", e)
+  return translate("Something unexpected went wrong. Try again - if it keeps happening, let your admin know.")
 }
 
 export async function login(usr: string, pwd: string) {
@@ -74,10 +152,35 @@ export async function login(usr: string, pwd: string) {
     method: "POST",
     body: JSON.stringify({ usr, pwd }),
   })
+  announceSessionChange()
 }
 
 export async function logout() {
   await doFetch("/api/method/logout", { method: "POST" })
+  announceSessionChange()
+}
+
+/** A raw POST (a multipart upload, or a stream read as it arrives) that
+ *  refreshes a stale CSRF token once, like doFetch. A JSON body is sent as
+ *  JSON; a FormData body lets the browser set the multipart boundary. */
+export async function postRaw(url: string, body: FormData | object): Promise<Response> {
+  const form = body instanceof FormData
+  const send = () => {
+    const token = csrfToken()
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        ...(form ? {} : { "Content-Type": "application/json" }),
+        ...(token ? { "X-Frappe-CSRF-Token": token } : {}),
+      },
+      body: form ? body : JSON.stringify(body),
+      credentials: "include",
+    })
+  }
+  const res = await send()
+  if (res.status !== 400) return res
+  const text = await res.clone().text()
+  return isCsrfError(res.status, text) && await refreshCsrfToken() ? send() : res
 }
 
 /** Upload an image to Frappe's public files; resolves to its served URL.
@@ -87,33 +190,14 @@ export async function uploadFile(
   file: File,
   opts?: { doctype?: string; docname?: string; fieldname?: string },
 ): Promise<string> {
-  const token = csrfToken()
   const fd = new FormData()
   fd.append("file", file, file.name)
   fd.append("is_private", "0")
   if (opts?.doctype) fd.append("doctype", opts.doctype)
   if (opts?.docname) fd.append("docname", opts.docname)
   if (opts?.fieldname) fd.append("fieldname", opts.fieldname)
-  const res = await fetch("/api/method/upload_file", {
-    method: "POST",
-    // no Content-Type header: the browser sets the multipart boundary
-    headers: token ? { "X-Frappe-CSRF-Token": token } : undefined,
-    body: fd,
-    credentials: "include",
-  })
-  if (!res.ok) {
-    let detail = `upload failed (${res.status})`
-    try {
-      const body = await res.json()
-      const msgs = JSON.parse(body._server_messages ?? "[]")
-      if (msgs.length) {
-        detail = htmlToText(String(JSON.parse(msgs[0]).message))
-      }
-    } catch {
-      /* keep status text */
-    }
-    throw new Error(detail)
-  }
+  const res = await postRaw("/api/method/upload_file", fd)
+  if (!res.ok) throw httpError(res.status, await res.text())
   const out = (await res.json()) as { message?: { file_url?: string } }
   const url = out.message?.file_url
   if (!url) throw new Error("upload returned no file URL")
@@ -129,17 +213,11 @@ export async function uploadTo(
   file: File,
   fields: Record<string, string> = {},
 ): Promise<{ file_url: string; file_name: string }> {
-  const token = csrfToken()
   const fd = new FormData()
   fd.append("file", file, file.name)
   for (const [k, v] of Object.entries(fields)) fd.append(k, v)
-  const res = await fetch(`/api/method/${method}`, {
-    method: "POST",
-    headers: token ? { "X-Frappe-CSRF-Token": token } : undefined,
-    body: fd,
-    credentials: "include",
-  })
-  if (!res.ok) throw new Error(`upload failed (${res.status})`)
+  const res = await postRaw(`/api/method/${method}`, fd)
+  if (!res.ok) throw httpError(res.status, await res.text())
   const out = (await res.json()) as {
     message?: { file_url?: string; file_name?: string }
   }
@@ -152,6 +230,13 @@ export async function frappeFetch<T = unknown>(
   init?: RequestInit,
 ): Promise<T> {
   return (await doFetch(path, init)) as T
+}
+
+/** A fresh idempotency key: one per money action, reused on its retries. */
+export function newIdempotencyKey(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `k-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 export async function call<T = unknown>(
@@ -175,19 +260,25 @@ export async function callGuest<T = unknown>(
   params: Record<string, unknown> = {},
 ): Promise<T> {
   const path = `/api/method/${method}`
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-    credentials: "omit",
-  })
-  if (!res.ok) {
-    const body = await res.text()
-    throw Object.assign(new Error(`${path} failed (${res.status})`), {
-      status: res.status,
-      body,
+  let res: Response
+  try {
+    // no auto-retry here: guest calls include book/pay, which must not repeat
+    res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+      credentials: "omit",
     })
+  } catch (err) {
+    console.warn(`[kamra] network failure calling ${path}`, err)
+    window.dispatchEvent(new Event("kamra:offline"))
+    throw Object.assign(
+      new Error("You seem to be offline. Check your connection and try again."),
+      { network: true },
+    )
   }
+  window.dispatchEvent(new Event("kamra:online"))
+  if (!res.ok) throw httpError(res.status, await res.text())
   return ((await res.json()) as { message: T }).message
 }
 
@@ -298,6 +389,9 @@ export interface BookingOptions {
     negotiated_rate_plan?: string | null
   }[]
   travel_agents: { name: string; agent_name: string; commission_pct: number }[]
+  ota_channels?: string[]
+  /** each OTA's default commission % (its Travel Agent record of type OTA) */
+  ota_commission?: Record<string, number>
   experiences: {
     name: string
     experience_name: string
@@ -331,6 +425,10 @@ export interface Quote {
   over_capacity_total?: number
   pet_charge?: number
   discount: number
+  /** long-stay discount already taken off room_total */
+  long_stay?: { rule: string; min_nights: number; percent: number; amount: number } | null
+  /** advance the stay's dates ask for: a season's %, else the property's */
+  advance?: { percent: number; season: string | null; amount: number }
   amount_before_tax: number
   tax_percent: number
   tax_amount: number
@@ -478,6 +576,12 @@ export const createBooking = (
     blacklist_override_reason?: string
     /** Finance / Hotel Admin only: book past a company credit block (logged) */
     credit_override_reason?: string
+    booked_via?: string
+    ota_ref?: string
+    ota_total?: number
+    ota_commission_pct?: number
+    marketing_consent?: number
+    market_segment?: string
   },
 ) =>
   call<{
@@ -865,6 +969,7 @@ export interface BanquetDocument {
     amount_in_words: string
     service_code_label: string
     footer: string | null
+    invoice_footer?: string | null
     place_of_supply: string | null
     tax_label: string
     tax_id_label: string
@@ -1547,6 +1652,8 @@ export interface ChatMsg {
   actions?: { tool: string; ok: boolean }[]
   /** Stays and quotes the turn touched (kamra.assistant._turn_cards). */
   cards?: import("../components/AgentCards").AgentCard[]
+  /** Tap answers under a guided question (components/AgentGuide). */
+  choices?: import("../components/AgentGuide").Choice[]
 }
 export interface ConversationSummary {
   name: string
@@ -1591,6 +1698,8 @@ export const setHousekeepingStatus = (room: string, status: string) =>
 
 export interface ReservationDetail {
   name: string
+  /** set when the stay is one room of a group booking */
+  group: { name: string; group_name: string; rooms: number; to_check_in: number } | null
   status: string
   source: string | null
   channel: string | null
@@ -1612,6 +1721,11 @@ export interface ReservationDetail {
   eta: string | null
   /** Flagged late: the night audit holds it as Due In, not a no-show. */
   late_arrival?: number
+  /** Everyone on the register and when each arrived / left */
+  occupants?: { full_name: string; arrived_at: string | null; left_at: string | null }[]
+  /** Set when an early check-out shortened the stay */
+  booked_check_out_date?: string | null
+  early_departure_reason?: string | null
   /** Room rate confirmed per night at booking - what the folio bills. */
   night_rates?: { date: string; rate: number; demand_premium_pct: number }[]
   precheckin_status: string | null
@@ -1671,6 +1785,7 @@ export interface ReservationDetail {
     can_check_out: boolean
     can_cancel: boolean
     can_amend: boolean
+    can_reinstate: boolean
   }
   /** Things the desk should see but which must never gate an arrival. Kept
    *  apart from `actions` on purpose: a missing ID is a warning, not a
@@ -1722,6 +1837,14 @@ export interface RepricePreview {
   difference: number
   needs_confirmation: boolean
   nights: { date: string; rate: number; demand_premium_pct: number }[]
+  /** a stay in house: what the rate-change policy does to nights already
+   * on the folio (kept at their charged rate, or credited by Kamra) */
+  charged_nights?: {
+    policy: string
+    nights: { date: string; charged: number; new: number; action: string }[]
+    kept_difference: number
+    credit_total: number
+  }
 }
 
 export const amendStayPreview = (

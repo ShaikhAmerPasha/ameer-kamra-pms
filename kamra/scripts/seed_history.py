@@ -202,6 +202,12 @@ def after_reset():
 		end_rebuild()
 
 
+def _instant_modes() -> list[str]:
+	"""The demo country's instant modes (a wallet / instant transfer)."""
+	from kamra.localization import instant_payment_modes, pack_for
+	return instant_payment_modes(pack_for(PROPERTY))
+
+
 class History:
 	def __init__(self, days: int):
 		self.rng = random.Random(SEED)
@@ -566,7 +572,8 @@ class History:
 
 	def _check_out(self, s: dict) -> None:
 		from kamra.api import add_folio_payment, check_out, close_folio
-		modes = ["Card", "UPI", "Cash", "UPI", "Card"]
+		inst = _instant_modes()
+		modes = ["Card", *inst, "Cash", *inst, "Card"]
 		for f in self._folios(s):
 			if f.folio_type == "Company" or float(f.balance or 0) <= 0:
 				continue
@@ -622,8 +629,12 @@ class History:
 					and self.rng.random() < 0.12:
 				lines = [{"item_name": n, "qty": self.rng.randint(1, 3)}
 				         for n in self.rng.sample(items, min(2, len(items)))]
-				self.attempt("laundry_orders", collect_laundry, PROPERTY,
-				             room=s["room"], items=lines)
+				out = self.attempt("laundry_orders", collect_laundry, PROPERTY,
+				                   room=s["room"], items=lines)
+				# collect_laundry finds the stay by room, which can be today's
+				# in-house guest (see _pos): bill the bag to this past stay
+				if out:
+					frappe.db.set_value("Laundry Order", out["order"], "reservation", s["res"])
 
 	def _laundry_deliver(self) -> None:
 		from kamra.laundry import deliver_laundry, laundry_status, return_items
@@ -687,9 +698,13 @@ class History:
 				         for m in self.rng.sample(items, min(len(items), self.rng.randint(1, 4)))]
 				to_room = in_house and self.rng.random() < 0.25
 				room_stay = self.rng.choice(in_house) if to_room else None
+				# name the stay: the room alone resolves to whoever is checked
+				# in there now, and today's demo guests are already in house
+				# while the past is replayed, so their folios got old charges
 				order = self.attempt(
 					"pos_orders", create_order, outlet, lines,
 					room=room_stay["room"] if room_stay else None,
+					reservation=room_stay["res"] if room_stay else None,
 					table_no=None if room_stay else f"T{self.rng.randint(1, 12)}",
 					guests=self.rng.choice([1, 2, 2, 3, 4]))
 				if not order:
@@ -704,7 +719,7 @@ class History:
 					self.attempt("pos_room_charges", deliver_order, name)
 				else:
 					self.attempt("pos_paid", pay_order, name,
-					             self.rng.choice(["Card", "UPI", "Cash", "Card"]))
+					             self.rng.choice(["Card", *_instant_modes(), "Cash", "Card"]))
 
 	# -- money in from companies ---------------------------------------------
 

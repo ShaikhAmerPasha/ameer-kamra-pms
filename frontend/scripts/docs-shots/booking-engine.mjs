@@ -39,7 +39,7 @@ try {
 
   // with several properties live, /book starts with a chooser
   await open(g, `/book/${CI}/${CO}/2/0`, 3500)
-  await shot(g, "booking-engine/properties", { clip: { x: 200, y: 40, width: 1040, height: 590 } })
+  await shot(g, "booking-engine/properties", { clip: { x: 0, y: 0, width: 1440, height: 660 } })
 
   for (const name of VILLAS) {
     const was = (await api(staff, "frappe.client.get_value", {
@@ -56,7 +56,8 @@ try {
   await g.mouse.wheel(0, 560); await g.waitForTimeout(1000)
   await shot(g, "booking-engine/rooms")
 
-  await g.getByRole("button", { name: "Book now" }).nth(1).click()
+  await g.getByRole("button", { name: "Select", exact: true }).nth(3).click()
+  await g.getByRole("button", { name: "Continue" }).first().click()
   await g.waitForTimeout(1200)
   const sh = g.locator('[role="dialog"]')
   await sh.getByLabel("Full name").fill("Arjun Mehta")
@@ -79,7 +80,9 @@ try {
     await pg.mouse.move(720, 600)
     await pg.mouse.wheel(0, 560)
     await pg.waitForTimeout(900)
-    await pg.getByRole("button", { name: "Book now" }).nth(1).click()
+    await pg.getByRole("button", { name: "Select", exact: true }).nth(3).click()
+    await pg.waitForTimeout(600)
+    await pg.getByRole("button", { name: "Continue" }).first().click()
     await pg.waitForTimeout(1000)
     const d = pg.locator('[role="dialog"]')
     await typeSlow(d.getByLabel("Full name"), "Nisha Kapoor", 50)
@@ -90,8 +93,8 @@ try {
     await d.getByRole("button", { name: "Book now" }).click()
     await d.getByText("Booking confirmed").waitFor({ timeout: 20000 })
     await pg.waitForTimeout(2200)
-    reservation = (await d.locator("p.text-lg.font-semibold").first().textContent())?.trim()
-    await shot(pg, "booking-engine/confirmed", { clip: { x: 480, y: 0, width: 960, height: 200 } })
+    reservation = (await d.getByText("Booking number").locator("xpath=following-sibling::p[1]").textContent())?.trim()
+    await shot(pg, "booking-engine/confirmed", { clip: { x: 480, y: 0, width: 960, height: 420 } })
   })
   if (!reservation) {
     const rows = await api(staff, "frappe.client.get_list", { doctype: "Reservation",

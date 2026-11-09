@@ -101,6 +101,12 @@ check-in, check-out:
 > Hello {{1}}, a payment of {{2}} is due for your stay ({{3}}). You
 > can pay online or at the front desk.
 
+**`kamra_room_charge`** (optional) - guest, amount, what and where,
+balance:
+
+> Hello {{1}}, {{2}} was added to your room bill: {{3}}. Your balance is
+> now {{4}}. Questions? Reply here or call the front desk.
+
 Approval usually takes minutes for Utility templates. Once approved,
 type each template's exact name into the matching field on the
 Channels connection.
@@ -131,6 +137,17 @@ Nothing else to configure:
   accepts templates, and the screen tells you so.
 - **Payment requests**: from the stay, `send_payment_request` posts
   the amount with your payment template.
+- **Room charge alerts** (off until you turn them on): with the
+  `kamra_room_charge` template on the connection and **Settings → Front
+  Desk → Guest alerts → WhatsApp the guest when a charge is posted to the
+  room** ticked, an in-house guest gets a message when a restaurant bill,
+  laundry, minibar or desk charge is posted to their room, with the
+  running balance. Room nights from the night audit, company and group
+  bills, discounts and zero amounts never send one, and a bill gets at
+  most one message every 10 minutes (the next one shows the new
+  balance). The message is sent after the charge is saved, so a WhatsApp
+  outage never stops a posting. It is a stay message, so a guest's STOP
+  (marketing opt-out) does not turn it off.
 - Every message in both directions is stored as a *WhatsApp Message*
   record, so the history is queryable and auditable.
 
@@ -149,8 +166,29 @@ bench --site yoursite install-app frappe_whatsapp
 
 It uses the same Meta credentials, adds template syncing from Frappe,
 notification-on-doctype-event rules, and bulk sends. Keep marketing
-lists consented - WhatsApp bans numbers that message people who
-didn't opt in.
+lists consented: filter them on the guest's **Marketing consent**
+(below). WhatsApp bans numbers that message people who didn't opt in.
+
+## Marketing consent and opt-out
+
+Booking confirmations, check-in links and payment requests are service
+messages and always go out. Offers and promotions (Meta category
+**Marketing**) need the guest's recorded consent.
+
+- **Opting in** is always explicit, and never pre-ticked: the *Send me
+  offers on WhatsApp* box on the booking page, *Guest agrees to offers
+  on WhatsApp* in the desk booking dialog, the *Offers on WhatsApp*
+  toggle in the guest profile, or the guest replying **START**.
+- **Opting out** is as easy: the guest replies **STOP** or
+  **UNSUBSCRIBE** (also **BAJA**, **ALTO**, **PARAR**, **SAIR**,
+  **إلغاء**, **توقف**; any case), or the desk clears the toggle. The
+  guest gets one confirmation in the language of the word they sent.
+- The guest profile shows when consent last changed and how (booking
+  page, desk or WhatsApp keyword). Every change is also written to the
+  activity log with who made it.
+- `kamra.whatsapp.send_marketing` sends a promotional template to one
+  guest and refuses when they have not opted in. Use it (or filter on
+  the consent field) for any promotional send.
 
 ## Troubleshooting
 

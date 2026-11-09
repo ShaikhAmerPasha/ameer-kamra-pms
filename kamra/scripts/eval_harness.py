@@ -12,7 +12,7 @@ Run via bench console:
 import json
 
 import frappe
-from frappe.utils import add_days, getdate, nowdate
+from frappe.utils import add_days, get_datetime, getdate, nowdate
 
 P = "EVAL Hotel"
 RESULTS = []
@@ -4096,7 +4096,7 @@ def t82c():
 	])
 	rows = {o["full_name"]: o for o in out["rows"]}
 	adult, child, visitor = rows["Evalfam Parent"], rows["Evalfam Child"], rows["Evalfam Visitor"]
-	assert adult["id_number"] == "987654321012" and adult["phone"], adult
+	assert adult["id_number"] == "••••••••1012" and adult["phone"], adult  # Aadhaar: last 4 only
 	assert child["age"] == 9 and not (child["id_type"] or child["id_number"] or child["phone"]), child
 	# Form C: a foreign child's passport is part of the register; a phone is not
 	assert visitor["id_number"] == "19FR12345" and not visitor["phone"], visitor
@@ -4915,8 +4915,11 @@ def t110():
 	saved = frappe.db.get_value("Property", P, "business_date")
 	calls = []
 	try:
+		# 04:00 on the property clock: past the default 03:00 run time
 		with patch.object(folio_mod, "run_night_audit",
-		                  side_effect=lambda prop, *a, **k: calls.append(prop)):
+		                  side_effect=lambda prop, *a, **k: calls.append(prop)), \
+		     patch.object(folio_mod, "audit_clock",
+		                  return_value=get_datetime(f"{today} 04:00:00")):
 			# staff closed yesterday by hand at 23:00: today has only just begun
 			frappe.db.set_value("Property", P, "business_date", today)
 			folio_mod.nightly_audit_all_properties()
@@ -5643,8 +5646,35 @@ def t177():
 			pass
 
 
-@check("day use: hourly tape places the slot, the room board flags the same-day turn")
+@check("day use: hourly rate plan quotes by hours, not one full night (#497)")
+def t177b():
+	from kamra.pricing import quote
+	d = "2035-03-15"
+	frappe.db.delete("Rate Plan", {"property": P, "code": "EHRLY"})
+	plan = frappe.get_doc({
+		"doctype": "Rate Plan", "property": P, "rate_plan_name": "Eval Hourly",
+		"code": "EHRLY", "modifier_type": "Percent", "modifier_value": 0,
+		"billing_basis": "Hourly", "hourly_rate": 250, "min_hours": 2,
+	}).insert(ignore_permissions=True)
+	nightly = quote(P, RT, d, d, 2, 0)
+	hourly = quote(P, RT, d, d, 2, 0, rate_plan=plan.name,
+	               check_in_time="10:00", check_out_time="14:00")
+	assert hourly["day_use"] and hourly.get("day_use_billing"), hourly
+	assert hourly["day_use_billing"]["hours"] == 4, hourly["day_use_billing"]
+	assert abs(hourly["room_total"] - 1000) < 0.01, hourly["room_total"]
+	assert hourly["amount_after_tax"] < nightly["amount_after_tax"], \
+		(hourly["amount_after_tax"], nightly["amount_after_tax"])
+	# overnight with the same plan stays nightly
+	from frappe.utils import add_days
+	ov = quote(P, RT, d, add_days(d, 1), 2, 0, rate_plan=plan.name)
+	assert not ov["day_use"] and "day_use_billing" not in ov, ov
+
+
+@check("day use: hourly tape places the slot; due-out waits for the planned ETD")
 def t178():
+	from datetime import datetime
+	from unittest.mock import patch
+
 	from kamra import api
 	room = _dep_room("E178")
 	g = _guest("Eval Day Use HK", "+91 70000 00178")
@@ -5658,9 +5688,17 @@ def t178():
 	res = frappe.get_doc("Reservation", out["reservation"])
 	res.status = "Checked In"
 	res.save(ignore_permissions=True)
-	board = api.room_board(P)
+	# Before ETD the room is day-use but not yet due out (#497).
+	before = datetime.strptime(f"{nowdate()} 12:00:00", "%Y-%m-%d %H:%M:%S")
+	with patch("kamra.day_use.now_datetime", return_value=before):
+		board = api.room_board(P)
 	tile = next(x for x in board["rooms"] if x.name == room)
-	assert tile["day_use"] and tile["due_out"] and tile["etd"] == "13:00", tile
+	assert tile["day_use"] and not tile["due_out"] and tile["etd"] == "13:00", tile
+	after = datetime.strptime(f"{nowdate()} 13:00:00", "%Y-%m-%d %H:%M:%S")
+	with patch("kamra.day_use.now_datetime", return_value=after):
+		board = api.room_board(P)
+	tile = next(x for x in board["rooms"] if x.name == room)
+	assert tile["due_out"] and tile["etd"] == "13:00", tile
 
 
 @check("Security deposit MCP tools are exposed; withhold stays desk-only")
@@ -6133,6 +6171,7 @@ def t133():
 		kinds = {c.charge_type for c in frappe.get_doc("Folio", folio).charges}
 		assert {"Cleaning Fee", "Misc"} <= kinds, kinds
 		_assert_folio_on_ledger(folio)
+		_allowance_approval_off()
 		api.post_allowance(folio, 100, "eval service recovery")
 		_assert_folio_on_ledger(folio)
 	finally:
@@ -7546,6 +7585,14 @@ def t327():
 		assert wiz["open_pos_bills"]["count"] == row["open_pos_bills"]
 
 
+def _allowance_approval_off():
+	"""A new property asks a manager for every allowance; these checks are
+	about the ledger, so the eval property posts allowances straight away."""
+	from kamra.settings import clear_cache, write_kv
+	write_kv(P, "allowance_approval", "Off")
+	clear_cache(P)
+
+
 @check("voids & allowances report lists an allowance with its folio and reason")
 def t328():
 	from kamra import api
@@ -7553,6 +7600,7 @@ def t328():
 	res, folio = _in_house("Eval Void Report", "+91 70000 00328", "2037-01-18",
 	                       "2037-01-20", _ledger_room("L328"))
 	api.add_folio_charge(folio, "Misc", "eval void report", 500, gst_rate=0)
+	_allowance_approval_off()
 	api.post_allowance(folio, 100, "eval void report reason")
 	rows = void_allowance_report(P, nowdate(), nowdate())
 	assert any(r["folio"] == folio and r["action"] == "Allowance" for r in rows), rows[:3]
@@ -7720,7 +7768,7 @@ def t316():
 	# India keeps 18% GST on services; every pack's services rate is one it allows
 	assert services_tax_rate(pack_for_country("India"), P) == 18.0
 	for country in ("India", "Saudi Arabia", "United Arab Emirates", "Malaysia",
-	                "Thailand", "Indonesia"):
+	                "Thailand", "Indonesia", "Brazil"):
 		# no property: the pack's statutory default (P is an Indian hotel
 		# whose 5% room types would otherwise steer the VAT packs)
 		pack = pack_for_country(country)
@@ -8779,7 +8827,13 @@ def _ci_room(number):
 
 def _ci_stay(name, phone, room=None):
 	g = _guest(name, phone)
-	return _res(g, nowdate(), add_days(nowdate(), 2), room=room)
+	res = _res(g, nowdate(), add_days(nowdate(), 2), room=room)
+	# the second adult is on the register with an ID: these checks are
+	# about the main guest's, and every adult on a booking needs one
+	res.append("occupants", {"full_name": f"{name} Partner", "age": 30,
+	                         "id_type": "Passport", "id_number": "E7654321"})
+	res.save(ignore_permissions=True)
+	return res
 
 
 def _refused(fn, *args, exc=None, contains=None, **kwargs):
@@ -10166,6 +10220,27 @@ def t385():
 	assert "create_booking" in names and "assign_rooms_apply" in names, sorted(names)[:10]
 	# still bounded by the normal role: Front Desk never gets rate tools
 	assert "set_room_rate" not in names
+	# city ledger aging is the same gate as Finance → Ledgers (Front Desk may)
+	assert "city_ledger_aging" in names
+	assert not BY_NAME["city_ledger_aging"].mutating
+	assert BY_NAME["city_ledger_aging"].inject_property
+	assert BY_NAME["city_ledger_aging"].module == "finance"
+
+
+@check("city_ledger_aging MCP tool: Housekeeping cannot see it; Front Desk can")
+def t385b():
+	from kamra.mcp_tools import BY_NAME, allowed_tools, tool_allowed
+
+	spec = BY_NAME["city_ledger_aging"]
+	assert spec.dotted == "ledger.city_ledger_aging"
+	assert not tool_allowed(spec, roles={"Housekeeping"})
+	assert tool_allowed(spec, roles={"Front Desk"})
+	with _as_user("hk@kamra.local"):
+		names = {t.name for t in allowed_tools(property=P)}
+	assert "city_ledger_aging" not in names
+	with _as_user(FD):
+		names = {t.name for t in allowed_tools(property=P)}
+	assert "city_ledger_aging" in names
 
 
 @check("MCP property switches: AI access off refuses everyone, read-only drops writes even for MCP Manage, blocked tools vanish")
@@ -10196,6 +10271,302 @@ def t386():
 			_refused(access_overview, P, exc=frappe.PermissionError)
 	finally:
 		set_mcp_policy(P, enabled=1, read_only=0, blocked_tools=[])
+
+
+@check("Brazil pack: tax rates, labels and Region list entry")
+def t387():
+	from kamra.localization import pack_for, supported_countries
+	from kamra.pricing import quote
+
+	pname = "EVAL Brazil Hotel"
+	if not frappe.db.exists("Property", pname):
+		frappe.get_doc({
+			"doctype": "Property", "property_name": pname,
+			"city": "São Paulo", "country": "Brazil", "currency": "BRL",
+		}).insert(ignore_permissions=True)
+	rt_name = f"{pname}-STD"
+	if not frappe.db.exists("Room Type", rt_name):
+		rt = frappe.get_doc({
+			"doctype": "Room Type", "property": pname,
+			"room_type_code": "STD", "room_type_name": "Standard",
+			"base_price": 4000, "base_occupancy": 2,
+			"adults_capacity": 2, "children_capacity": 1,
+		}).insert(ignore_permissions=True).name
+	else:
+		rt = rt_name
+
+	pack = pack_for(pname)
+	assert pack.__name__.endswith("brazil"), pack.__name__
+	assert "Brazil" in {c["country"] for c in supported_countries()}
+	q = quote(pname, rt, "2031-06-01", "2031-06-02", 2, 0)
+	assert q["nightly"][0]["gst_rate"] == 5, q["nightly"]
+	assert pack.fnb_tax_rate(pname) == 5.0, pack.fnb_tax_rate(pname)
+	loc = pack.locale(frappe.get_doc("Property", pname))
+	assert loc["currency_symbol"] == "R$", loc
+	assert loc["currency"] == "BRL", loc
+	assert loc["locale"] == "pt-BR", loc
+	ctx = pack.invoice_context(frappe.get_doc("Property", pname))
+	assert ctx["tax_id_label"] == "CNPJ / CPF", ctx
+	assert ctx["tax_label"] == "ISS", ctx
+
+
+@check("Nicaragua pack: IVA, regional defaults and separate manual INTUR levy")
+def t_nicaragua_pack():
+	from kamra.api import _apply_country_defaults
+	from kamra.localization import pack_for, supported_countries
+	from kamra.pricing import quote
+
+	sp = "nicaragua_pack_state"
+	frappe.db.savepoint(sp)
+	try:
+		values = {"property_name": "EVAL Nicaragua Hotel", "country": "Nicaragua",
+		          "city": "Rivas", "rates_include_tax": 0, "room_levy_percent": 0}
+		_apply_country_defaults(values)
+		assert values["currency"] == "NIO", values
+		assert values["timezone"] == "America/Managua", values
+		assert values["room_levy_label"] == "INTUR", values
+		assert values["room_levy_percent"] == 0, values
+		assert values["gst_rate_low"] == 15, values
+		prop = frappe.get_doc({"doctype": "Property", **values}).insert(ignore_permissions=True)
+		rt = frappe.get_doc({
+			"doctype": "Room Type", "property": prop.name,
+			"room_type_code": "STD", "room_type_name": "Standard",
+			"base_price": 1000, "base_occupancy": 2,
+			"adults_capacity": 2, "children_capacity": 1,
+		}).insert(ignore_permissions=True)
+		pack = pack_for(prop.name)
+		assert pack.__name__ == "kamra.localization.nicaragua", pack.__name__
+		assert "Nicaragua" in {row["country"] for row in supported_countries()}
+		q = quote(prop.name, rt.name, "2031-06-01", "2031-06-02", 2, 0)
+		assert q["nightly"][0]["gst_rate"] == 15, q
+		assert round(q["tax_amount"], 2) == 150, q
+		assert round(q["amount_after_tax"], 2) == 1150, q
+		assert q["room_levy"] == 0, q
+		assert pack.fnb_tax_rate(prop.name) == pack.services_tax_rate(prop.name) == 15
+		loc = pack.locale(prop)
+		assert (loc["currency"], loc["currency_symbol"], loc["locale"]) == ("NIO", "C$", "es-NI"), loc
+		ctx = pack.invoice_context(prop)
+		assert (ctx["tax_label"], ctx["tax_id_label"]) == ("IVA", "RUC"), ctx
+
+		frappe.db.set_value("Property", prop.name, "rates_include_tax", 1)
+		frappe.clear_document_cache("Property", prop.name)
+		gross = quote(prop.name, rt.name, "2031-06-01", "2031-06-02", 2, 0)
+		assert round(gross["amount_after_tax"], 2) == 1000, gross
+		assert round(gross["tax_amount"], 2) == 130.43, gross
+
+		# A deliberately configured levy exercises the core's separate line;
+		# it is not an automatic decision that INTUR is due on this stay.
+		frappe.db.set_value("Property", prop.name, {
+			"rates_include_tax": 0, "room_levy_percent": 2, "room_levy_taxable": 0})
+		frappe.clear_document_cache("Property", prop.name)
+		levied = quote(prop.name, rt.name, "2031-06-01", "2031-06-02", 2, 0)
+		assert levied["room_levy"] == 20 and levied["tax_amount"] == 150, levied
+		assert levied["amount_after_tax"] == 1170, levied
+		line = next(row for row in levied["line_items"] if row["component"] == "room_levy")
+		assert line["description"] == "INTUR" and line["tax_amount"] == 0, line
+	finally:
+		frappe.db.rollback(save_point=sp)
+		frappe.clear_document_cache("Property", "EVAL Nicaragua Hotel")
+
+
+@check("concurrency: a second booking, villa, OTA delivery, voucher, credit, till and stock count see what the first one wrote")
+def t_concurrency_guards():
+	from frappe.utils import add_days, nowdate
+
+	from kamra import cashier, inventory
+	from kamra.authz import act_as
+	from kamra.kamra.doctype.reservation.reservation import ota_live_key
+	from kamra.pricing import consume_voucher_use
+
+	sp = "concurrency_guards"
+	frappe.db.savepoint(sp)
+	try:
+		with act_as("Administrator"):
+			prop = frappe.get_doc({
+				"doctype": "Property", "property_name": "Eval Race Hotel",
+			}).insert(ignore_permissions=True).name
+			rt = frappe.get_doc({
+				"doctype": "Room Type", "property": prop, "room_type_code": "STD",
+				"room_type_name": "Standard", "base_price": 1000,
+			}).insert(ignore_permissions=True).name
+			frappe.get_doc({
+				"doctype": "Room", "property": prop, "room_type": rt, "room_number": "101",
+			}).insert(ignore_permissions=True)
+			guest = frappe.get_doc({
+				"doctype": "Guest", "first_name": "Eval Race",
+			}).insert(ignore_permissions=True).name
+			ci, co = nowdate(), str(add_days(nowdate(), 1))
+
+			def stay(**kw):
+				return frappe.get_doc({
+					"doctype": "Reservation", "property": prop, "room_type": rt,
+					"guest": guest, "status": "Confirmed", "adults": 2,
+					"check_in_date": ci, "check_out_date": co, **kw,
+				})
+
+			stay().insert(ignore_permissions=True)
+			try:
+				stay().insert(ignore_permissions=True)
+				raise AssertionError("the only room was sold twice")
+			except frappe.ValidationError:
+				pass
+			assert frappe.db.count("Reservation", {"property": prop, "status": "Confirmed"}) == 1
+
+			villa = frappe.get_doc({
+				"doctype": "Room Type", "property": prop, "room_type_code": "VILLA",
+				"room_type_name": "Villa", "room_category": "Villa", "base_price": 4000,
+			}).insert(ignore_permissions=True).name
+			try:
+				stay(room_type=villa).insert(ignore_permissions=True)
+				raise AssertionError("the villa sold while a member room is occupied")
+			except frappe.ValidationError:
+				pass
+
+			booked = stay(ota_ref="EVAL-OTA-1")
+			# the room is taken; this insert is only to claim the reference,
+			# so park it as a request that holds no inventory
+			booked.status = "Requested"
+			booked.insert(ignore_permissions=True)
+			assert booked.ota_live_key == ota_live_key(prop, "EVAL-OTA-1")
+			again = stay(ota_ref="EVAL-OTA-1", status="Requested")
+			try:
+				again.insert(ignore_permissions=True)
+				raise AssertionError("the same OTA reference booked twice")
+			except frappe.DuplicateEntryError:
+				pass
+
+			voucher = frappe.get_doc({
+				"doctype": "Discount Voucher", "property": prop, "voucher_code": "ONCE",
+				"discount_type": "Percent", "value": 10, "max_uses": 1,
+			}).insert(ignore_permissions=True)
+			consume_voucher_use(voucher.name)
+			try:
+				consume_voucher_use(voucher.name)
+				raise AssertionError("a one-use code redeemed twice")
+			except frappe.ValidationError as e:
+				assert "fully redeemed" in str(e), e
+			assert frappe.db.get_value("Discount Voucher", voucher.name, "times_used") == 1
+
+			from kamra.credit import enforce_company_credit
+			from kamra.ledger import _ar_account, locked_account_figures
+			company = frappe.get_doc({
+				"doctype": "Corporate Account", "company_name": "Eval Race Co",
+				"credit_allowed": 1,
+			}).insert(ignore_permissions=True)
+			account = _ar_account(prop, company.name)
+			frappe.db.set_value("City Ledger Account", account, "credit_limit", 100)
+			frappe.get_doc({
+				"doctype": "City Ledger Entry", "account": account, "property": prop,
+				"posting_date": nowdate(), "kind": "Adjustment", "debit": 80, "credit": 0,
+				"folio": None,
+			}).insert(ignore_permissions=True)
+			figures = locked_account_figures(account)
+			assert figures["ar_balance"] == 80, figures
+			credit = enforce_company_credit(company.name, prop, 30)
+			assert not credit["ok"], credit
+
+			till = cashier.save_terminal(prop, "Eval Till")["name"]
+			first = cashier.open_session(prop, cashier_terminal=till)
+			second = cashier.open_session(prop, cashier_terminal=till)
+			assert first["name"] == second["name"]
+			assert frappe.db.count("Cashier Session",
+			                        {"cashier_terminal": till, "status": "Open"}) == 1
+
+			outlet = frappe.get_doc({
+				"doctype": "POS Outlet", "property": prop, "outlet_name": "Eval Kitchen",
+				"outlet_type": "Restaurant", "gst_rate": 5,
+			}).insert(ignore_permissions=True).name
+			ing = inventory.save_ingredient(prop, "Eval Onion", "kg", cost_per_unit=10)["name"]
+			inventory.receive_stock(prop, outlet, [{"ingredient": ing, "qty": 10}])
+			counted = inventory.adjust_stock(
+				prop, outlet, [{"ingredient": ing, "counted_qty": 4}], "eval count")
+			assert counted["adjusted"][0]["now"] == 4, counted
+	finally:
+		frappe.db.rollback(save_point=sp)
+		for name in ("Eval Race Hotel",):
+			frappe.clear_document_cache("Property", name)
+
+
+@check("safe: two deposits on one cash office cannot overdraw it")
+def t_safe_deposit_race():
+	# Back-to-back, then overlapped. A second connection cannot see this
+	# check's uncommitted rows, so the deposit that wins the lock is applied
+	# when the other request acquires it — where that request resumes after
+	# the winner commits. The balance check has to run after the lock.
+	from unittest.mock import patch
+
+	from kamra import cashier
+	from kamra.authz import act_as
+
+	sp = "safe_deposit_race"
+	frappe.db.savepoint(sp)
+	try:
+		with act_as("Administrator"):
+			office = cashier.save_terminal(P, "Eval Safe Race", kind="Cash Office")["name"]
+			cashier.open_session(P, 1000)
+			cashier.cash_drop(P, 400, to_terminal=office)
+			pending = frappe.db.get_value(
+				"Cash Transfer", {"to_terminal": office, "status": "Pending"}, "name")
+			assert cashier.receive_transfer(pending)["safe"]["balance"] == 400
+
+			first = cashier.bank_deposit(office, 150)
+			assert first["safe"]["balance"] == 250, first
+			try:
+				cashier.bank_deposit(office, 300)
+				raise AssertionError("a deposit larger than the safe was accepted")
+			except frappe.ValidationError as e:
+				assert "more than the safe holds" in str(e), e
+			assert cashier._safe_balance(office)["balance"] == 250
+
+			doc = frappe.get_doc("Cash Transfer", first["transfer"])
+			doc.amount = 500
+			try:
+				doc.save(ignore_permissions=True)
+				raise AssertionError("raising a deposit overdrew the safe")
+			except frappe.ValidationError as e:
+				assert "more than the safe holds" in str(e), e
+			assert float(frappe.db.get_value(
+				"Cash Transfer", first["transfer"], "amount")) == 150
+			assert cashier._safe_balance(office)["balance"] == 250
+
+			try:
+				frappe.get_doc({
+					"doctype": "Cash Transfer", "property": P, "kind": "Bank Deposit",
+					"status": "Received", "amount": 300, "from_terminal": office,
+				}).insert(ignore_permissions=True)
+				raise AssertionError("saving a bank deposit overdrew the safe")
+			except frappe.ValidationError as e:
+				assert "more than the safe holds" in str(e), e
+			assert cashier._safe_balance(office)["balance"] == 250
+
+			real_lock = cashier._lock_cash_office
+			state = {"done": False}
+
+			def other_deposit_commits_first(name):
+				real_lock(name)
+				if not state["done"]:
+					state["done"] = True
+					cashier.bank_deposit(office, 200)
+
+			with patch.object(cashier, "_lock_cash_office", other_deposit_commits_first):
+				try:
+					cashier.bank_deposit(office, 200)
+					raise AssertionError("overlapped deposits both cleared")
+				except frappe.ValidationError as e:
+					assert "more than the safe holds" in str(e), e
+			assert cashier._safe_balance(office)["balance"] == 50, cashier._safe_balance(office)
+			assert frappe.db.count("Cash Transfer", {
+				"from_terminal": office, "kind": "Bank Deposit"}) == 2
+
+			assert cashier.bank_deposit(office, 50)["safe"]["balance"] == 0
+			try:
+				cashier.bank_deposit(office, 0.01)
+				raise AssertionError("the safe went negative")
+			except frappe.ValidationError as e:
+				assert "more than the safe holds" in str(e), e
+			assert cashier._safe_balance(office)["balance"] == 0
+	finally:
+		frappe.db.rollback(save_point=sp)
 
 
 def execute():
@@ -10237,7 +10608,8 @@ def execute():
 		           t360, t361, t362, t363, t364, t365,
 		           t370, t371, t372, t373, t374, t375, t376,
 		           t217, t260, t261, t262, t263, t264,
-		           t380, t381, t382, t383, t384, t385, t386):
+		           t380, t381, t382, t383, t384, t385, t386, t387, t_nicaragua_pack,
+		           t_concurrency_guards, t_safe_deposit_race):
 			fn()
 	finally:
 		frappe.flags.kamra_checkin_steps_off = False

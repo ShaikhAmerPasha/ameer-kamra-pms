@@ -6,7 +6,7 @@
     steps cannot be passed without resolving them or acknowledging them with
     a reason; warning steps have Continue. Progress lives on the draft Night
     Audit Run, so reopening resumes where the auditor left off. Step 10 runs
-    the same audit the 3 AM job runs; 11 prints the saved audit pack. */
+    the same audit the scheduler runs; 11 prints the saved audit pack. */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import {
@@ -48,7 +48,7 @@ import { Card } from "../components/ui/card"
 import { cur, moneyLocale } from "../lib/money"
 import { useT, t as translate } from "../lib/i18n"
 import { cn } from "../lib/utils"
-import { AuditPackView, SESSION_COLS, DataTable, fmtDay } from "./AuditPack"
+import { AuditPackView, sessionCols, DataTable, fmtDay } from "./AuditPack"
 
 
 const money = (n: unknown) =>
@@ -572,7 +572,7 @@ export default function EndOfDayWizard() {
           rows={state.checks}
         />
         <p className="text-xs text-zinc-500">
-          {t("Scheduled 3 AM audit when checks block: {mode}", { mode: t(state.auto_audit_with_blockers) })}
+          {t("Scheduled audit when checks block: {mode}", { mode: t(state.auto_audit_with_blockers) })}
         </p>
       </div>
     )
@@ -836,7 +836,7 @@ export default function EndOfDayWizard() {
           <h3 className="mb-2 text-sm font-semibold text-zinc-800">{t("Expected vs counted")}</h3>
           <DataTable
             dense
-            cols={blind ? SESSION_COLS.filter((x) => x.key !== "expected_cash" && x.key !== "variance") : SESSION_COLS}
+            cols={blind ? sessionCols().filter((x) => x.key !== "expected_cash" && x.key !== "variance") : sessionCols()}
             rows={state.sessions}
             empty={translate("No cashier sessions on this business date.")}
           />

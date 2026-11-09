@@ -20,8 +20,9 @@ import { cur, moneyLocale, adoptUiLocale } from "../lib/money"
 import { formatPhoneDisplay, formatPhoneTel } from "../lib/phone"
 import { petChargeBasis } from "../lib/pets"
 import { useT, t as translate } from "../lib/i18n"
-import { adoptBrowserLanguage } from "../lib/dir"
+import { adoptGuestLanguage } from "../lib/dir"
 import { LanguageSwitcher } from "../components/LanguageSwitcher"
+import { addDays, nightsBetween, stayFromParams, todayPlus } from "../lib/stay"
 import ChildAges, {
   agesToSend, canReserve, sizeAges, StayNotice,
   type ChildAge, type StayFit,
@@ -120,22 +121,6 @@ const inputCls =
   "w-full rounded-lg border border-zinc-300 bg-white px-3.5 py-2.5 text-base " +
   "focus:outline-2 focus:outline-offset-1 focus:outline-brand-600"
 
-function todayPlus(days: number) {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
-function nightsBetween(a: string, b: string) {
-  const ms = new Date(b).getTime() - new Date(a).getTime()
-  return Math.max(1, Math.round(ms / 86_400_000))
-}
-
-function addDays(date: string, days: number) {
-  const d = new Date(date)
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
 
 function mapEmbedUrl(lat: number, lng: number) {
   const d = 0.02
@@ -226,23 +211,16 @@ function HostBlock({
 
 export default function PublicListing() {
   const { t, tn } = useT()
-  useEffect(() => adoptBrowserLanguage(), [])
+  useEffect(() => adoptGuestLanguage(), [])
   const { slug, checkin, checkout, adults: adultsParam, children: childrenParam } =
     useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [resolved, setResolved] = useState<Resolved | null>(null)
   const [data, setData] = useState<Showcase | null>(null)
-  const [search, setSearch] = useState(() => {
-    const check_in_date = checkin ?? todayPlus(1)
-    return {
-      check_in_date,
-      check_out_date: checkout ?? addDays(check_in_date, 2),
-      adults: Number(adultsParam ?? 2) || 2,
-      pets: 0,
-      children: Number(childrenParam ?? 0) || 0,
-    }
-  })
+  const [search, setSearch] = useState(() =>
+    stayFromParams({ checkin, checkout, adults: adultsParam, children: childrenParam }),
+  )
   const [results, setResults] = useState<Record<string, StayResult>>({})
   const [childAgesState, setChildAges] = useState<ChildAge[]>([])
   const childAges = sizeAges(childAgesState, search.children)
@@ -254,6 +232,7 @@ export default function PublicListing() {
     email: "",
     meal_plan: "",
     special_requests: "",
+    marketing_consent: 0,
   })
   const [done, setDone] = useState<{ reservation: string; amount: number; status?: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -930,7 +909,7 @@ export default function PublicListing() {
                 <input
                   className={inputCls}
                   value={form.phone}
-                  placeholder="+91 …"
+                  placeholder="+…"
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 />
               </label>
@@ -944,6 +923,12 @@ export default function PublicListing() {
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
+              </label>
+              <label className="flex items-start gap-2 text-sm text-zinc-600 sm:col-span-2">
+                <input type="checkbox" className="mt-0.5 size-4 accent-brand-600"
+                  checked={Boolean(form.marketing_consent)}
+                  onChange={(e) => setForm({ ...form, marketing_consent: e.target.checked ? 1 : 0 })} />
+                {t("Send me offers on WhatsApp. Reply STOP at any time to opt out.")}
               </label>
               {error && (
                 <p className="text-sm text-rose-600 sm:col-span-2">{translate(error)}</p>

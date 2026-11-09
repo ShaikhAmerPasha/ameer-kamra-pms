@@ -83,12 +83,9 @@ acceso, y solo TI puede cambiar a un administrador de TI.
 
 ## Qué puede hacer cada rol
 
-**Configuración → Roles y permisos** muestra qué aplicaciones abre cada rol
-y qué páginas de configuración puede cambiar. Los roles son conjuntos
-fijos: cada pantalla, llamada a la API y herramienta de IA los comprueba en
-el servidor.
-
-![La matriz de roles: aplicaciones que abre cada rol y ajustes que puede cambiar cada rol](/img/settings/roles.png)
+Los roles son conjuntos fijos: cada pantalla, llamada a la API y
+herramienta de IA los comprueba en el servidor. Se asignan en
+**Configuración → Personal y acceso**.
 
 | Rol | Día a día |
 | --- | --- |
@@ -97,6 +94,7 @@ el servidor.
 | Responsable de ingresos | Tarifas, temporadas, límites de tarifas, canales, el motor de reservas, ventas de banquetes |
 | Finanzas | Facturación, libros contables, auditoría nocturna, exportaciones, controles de impuestos y de caja |
 | Auditor nocturno | Cierre del día: llegadas, salidas, cierre de caja, el paquete de auditoría |
+| Gerente de alimentos y bebidas | Puntos de venta, la carta, meseros y mesas, la pantalla de cocina, informes y ajustes de alimentos y bebidas, aprobar anulaciones del TPV. Sin folios, caja ni finanzas |
 | Supervisor de limpieza | El panel de habitaciones, inspecciones, plazos de las tareas, precios de lavandería |
 | Limpieza | Sus propias tareas, estado de las habitaciones, objetos perdidos, normalmente en la aplicación móvil |
 

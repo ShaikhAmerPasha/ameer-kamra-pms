@@ -1,4 +1,4 @@
-/*  Rooms: the big board. Every room as a tile by floor, with what is
+/*  Room Board: every room today. Every room as a tile by floor, with what is
     happening in it today. Tap a room for its full story (RoomDrawer);
     Insights shows which rooms sell, earn and get cleaned, and how fast.
     For the desk and housekeeping supervisors; sized for a tablet. */
@@ -17,6 +17,7 @@ import RoomInsights from "../components/RoomInsights"
 import CheckOutDialog from "../components/CheckOutDialog"
 import CheckInDialog from "../components/CheckInDialog"
 import RoomChangeDialog from "../components/RoomChangeDialog"
+import { sortFloors } from "../lib/floors"
 
 
 const NO_FLOOR = "__none__"
@@ -102,13 +103,13 @@ export default function Rooms() {
 
   const rooms = board?.rooms ?? []
   const floorOf = (r: BoardRoom) => (r.floor || "").trim() || NO_FLOOR
-  const floors = useMemo(
-    () =>
-      Array.from(new Set(rooms.map(floorOf))).sort((a, b) =>
-        a === NO_FLOOR ? 1 : b === NO_FLOOR ? -1 : a.localeCompare(b, undefined, { numeric: true }),
-      ),
-    [rooms],
-  )
+  const floors = useMemo(() => {
+    const names = Array.from(new Set(rooms.map(floorOf)))
+    return [
+      ...sortFloors(names.filter((n) => n !== NO_FLOOR), board?.floors),
+      ...names.filter((n) => n === NO_FLOOR),
+    ]
+  }, [rooms, board?.floors])
   const shown = rooms.filter(
     (r) =>
       (floor === "all" || floorOf(r) === floor) &&
@@ -138,7 +139,7 @@ export default function Rooms() {
     <div className="min-w-0">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-zinc-900">{t("Rooms")}</h1>
+          <h1 className="text-xl font-semibold text-zinc-900">{t("Room Board")}</h1>
           <p className="mt-0.5 text-sm text-zinc-500">
             {t("Tap a room to change its status, see who is in it, who stayed and who cleaned it.")}
           </p>

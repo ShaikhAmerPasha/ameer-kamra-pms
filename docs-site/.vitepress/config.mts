@@ -49,6 +49,7 @@ const SIDEBAR: { text: ReturnType<typeof L>; collapsed?: boolean; items: [Return
       [L("How Kamra works", "Cómo funciona Kamra", "كيف يعمل Kamra"), "how-it-works"],
       [L("Features at a glance", "Funciones de un vistazo", "الميزات بنظرة سريعة"), "features"],
       [L("What's new", "Novedades", "الجديد"), "releases"],
+      [L("Video course", "Curso en video", "دورة الفيديو"), "video-course"],
       [L("Try the live demo", "Pruebe la demo", "جرّب العرض الحي"), "demo"],
       [L("Quickstart (Docker)", "Inicio rápido (Docker)", "البدء السريع (Docker)"), "quickstart"],
       [L("Go-live checklist", "Lista para la puesta en marcha", "قائمة بدء التشغيل"), "go-live"],
@@ -62,9 +63,10 @@ const SIDEBAR: { text: ReturnType<typeof L>; collapsed?: boolean; items: [Return
       [L("Front desk", "Recepción", "مكتب الاستقبال"), "front-desk"],
       [L("Reservations", "Reservas", "الحجوزات"), "reservations"],
       [L("Billing & cashier", "Facturación y caja", "الفوترة والصندوق"), "billing"],
+      [L("Books: suppliers, cash, P&L", "Libros: proveedores, caja, resultados", "الدفاتر: الموردون والنقد والأرباح"), "books"],
       [L("Night audit", "Auditoría nocturna", "التدقيق الليلي"), "night-audit"],
       [L("Reports & dashboards", "Informes y paneles", "التقارير ولوحات المعلومات"), "reports"],
-      [L("Rooms", "Habitaciones", "الغرف"), "rooms"],
+      [L("Room Board", "Panel de habitaciones", "لوحة الغرف"), "rooms"],
       [L("Housekeeping", "Limpieza", "التدبير المنزلي"), "housekeeping"],
       [L("Guest requests", "Solicitudes de huéspedes", "طلبات النزلاء"), "operations"],
       [L("F&B: POS & kitchen", "Alimentos y bebidas: POS y cocina", "الأغذية والمشروبات: نقطة البيع والمطبخ"), "fnb"],
@@ -79,6 +81,7 @@ const SIDEBAR: { text: ReturnType<typeof L>; collapsed?: boolean; items: [Return
     items: [
       [L("All integrations", "Todas las integraciones", "كل التكاملات"), "integrations"],
       [L("Country setup & e-invoicing", "Configuración por país y factura electrónica", "إعداد الدولة والفوترة الإلكترونية"), "country-setup"],
+      [L("Write a country pack", "Escribir un country pack", "كتابة حزمة دولة"), "write-a-country-pack"],
       [L("WhatsApp on your number", "WhatsApp en su número", "WhatsApp على رقمك"), "whatsapp"],
       [L("Channel manager (OTA sync)", "Channel manager (sincronización OTA)", "مدير القنوات (مزامنة OTA)"), "channel-manager"],
       [L("Connect your AI (MCP)", "Conecte su IA (MCP)", "اربط الذكاء الاصطناعي (MCP)"), "ai-and-mcp"],
@@ -185,6 +188,13 @@ export default defineConfig({
   base,
   outDir,
   cleanUrls: true,
+  // /docs/sitemap.xml: robots.txt and the site sitemap index point at it
+  sitemap: { hostname: "https://kamrapms.com/docs/" },
+  // Archived /docs/vX.Y.Z/ builds point at the latest page, so they never compete with it.
+  transformHead: ({ page }) => {
+    const path = page.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "")
+    return [["link", { rel: "canonical", href: `https://kamrapms.com/docs/${path}` }]]
+  },
   // the writing guide for contributors is not a published page
   srcExclude: ["STYLE.md", "README.md", "archives/**"],
   // local bench URLs in install guides are examples, not site pages
@@ -198,7 +208,12 @@ export default defineConfig({
     es: { label: "Español", lang: "es", link: "/es/", themeConfig: themeWords("es") },
     ar: { label: "العربية", lang: "ar", dir: "rtl", link: "/ar/", themeConfig: themeWords("ar") },
   },
-  head: [["link", { rel: "icon", type: "image/svg+xml", href: `${base}kamra-mark.svg` }]],
+  head: [
+    ["link", { rel: "icon", type: "image/svg+xml", href: `${base}kamra-mark.svg` }],
+    // Ask Kamra: the same drawer as the website, served from kamrapms.com/ask
+    ["link", { rel: "stylesheet", href: "/ask/widget.css?v=6" }],
+    ["script", { src: "/ask/widget.js?v=6", defer: "", "data-mode": "drawer", "data-endpoint": "/ask" }],
+  ],
   themeConfig: {
     logo: {
       light: "/kamra-horizontal.svg",
@@ -239,6 +254,7 @@ export default defineConfig({
       docVersions: versionsFile.versions,
       docLatest: versionsFile.latest,
       docCurrent,
+      docTranslated: [...TRANSLATED],
     } as Record<string, unknown>),
   },
 })

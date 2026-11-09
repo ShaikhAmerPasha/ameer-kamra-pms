@@ -189,6 +189,14 @@ export function SettingsCard(props: {
 }
 
 export const TIMEZONES = [
+  "America/Managua",
+  "America/Noronha",
+  "America/Sao_Paulo",
+  "America/Fortaleza",
+  "America/Belem",
+  "America/Manaus",
+  "America/Cuiaba",
+  "America/Rio_Branco",
   "Asia/Aden",
   "Asia/Riyadh",
   "Asia/Dubai",
@@ -346,7 +354,7 @@ function GatewayHelp({ property, gateway, hasKeys }: {
           {t("No {gateway} account yet?", { gateway: info.gateway })}{" "}
           <a className="font-medium text-brand-700 underline" href={info.signup_url}
              target="_blank" rel="noopener">{t("Create one free")}</a>
-          {" "}{t("and take UPI, cards and netbanking for advances and bills.")}
+          {" "}{t("and take online payments for advances and bills.")}
         </p>
       )}
       {info.needs_webhook ? (
@@ -438,8 +446,10 @@ function presetForBaseUrl(presets: AiPreset[], baseUrl: string): string | null {
   if (!url) return has("openai") ? "openai" : presets[0].id
   const exact = presets.find((p) => p.base_url && norm(p.base_url) === url)
   if (exact) return exact.id
-  if (url.includes(".openai.azure.com") && has("azure")) return "azure"
-  if (url.includes(":11434") && has("ollama")) return "ollama"
+  let host = "", port = ""
+  try { ({ hostname: host, port } = new URL(url)) } catch { /* not a URL: falls through to custom */ }
+  if (host.endsWith(".openai.azure.com") && has("azure")) return "azure"
+  if (port === "11434" && has("ollama")) return "ollama"
   if (has("custom")) return "custom"
   return presets[0].id
 }
@@ -832,13 +842,13 @@ export function AgentAccessCard() {
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>{translateUI("Claude & MCP")}</CardTitle>
-          <p className="mt-0.5 text-xs text-zinc-400">{translateUI("Connect Claude to this property's governed tools. It acts as the signed-in person, within their role, and every action lands in the Activity log.")}</p>
+          <CardTitle>{translateUI("AI Provider")}</CardTitle>
+          <p className="mt-0.5 text-xs text-zinc-400">{translateUI("Connect your AI provider to this property's governed tools. It acts as the signed-in person, within their role, and every action lands in the Activity log.")}</p>
         </div>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <p className="text-zinc-600">{translateUI("Staff open")}{" "}
-          <Link to="/assistant" className="font-medium text-brand-700 hover:underline">{translateUI("Kamra Agent → Connect your AI")}</Link>{" "}{translateUI("and click ")}<strong>{translateUI("Connect Claude")}</strong>{translateUI(". Claude opens with this hotel's MCP URL filled in; they confirm and sign in as themselves. No API keys on a laptop.")}</p>
+        <p className="text-zinc-600">
+          <Link to="/assistant" className="font-medium text-brand-700 hover:underline">{translateUI("Kamra Agent → AI Provider")}</Link>{": "}{translateUI("Use the MCP URL to connect ChatGPT, Claude or another compatible provider. Each person signs in as themselves with OAuth.")}</p>
         <pre className="overflow-x-auto rounded-lg bg-zinc-100 p-3 text-xs leading-relaxed text-zinc-700">
           {`claude mcp add --transport http kamra ${window.location.origin}/mcp`}
         </pre>
@@ -1490,6 +1500,104 @@ export function CheckInStepsCard({ property }: { property: string }) {
             <span className={msg.ok ? "text-xs text-emerald-600" : "text-xs text-rose-600"}>{translateUI(msg.text)}</span>
           )}
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+interface AuditLogRow {
+  business_date: string | null
+  status: "Closed" | "Held" | "Skipped" | "Failed"
+  run_trigger: "Scheduled" | "Manual"
+  user: string | null
+  started_at: string | null
+  message: string | null
+}
+
+interface AuditSchedule {
+  auto: number
+  time: string
+  timezone: string
+  business_date: string
+  next_run: string | null
+  runs: AuditLogRow[]
+}
+
+const RUN_TONE: Record<AuditLogRow["status"], string> = {
+  Closed: "text-emerald-700",
+  Held: "text-amber-700",
+  Skipped: "text-zinc-500",
+  Failed: "text-rose-700",
+}
+
+/** The automatic night audit at a glance: next run and the last 30 runs. */
+export function NightAuditScheduleCard({ property }: { property: string }) {
+  const { t } = useT()
+  const [data, setData] = useState<AuditSchedule | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    call<AuditSchedule>("kamra.night_audit.night_audit_schedule", { property })
+      .then(setData)
+      .catch((e) => setErr(serverError(e)))
+  }, [property])
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>{t("Night audit runs")}</CardTitle>
+            {data && (
+              <p className="mt-0.5 text-xs text-zinc-500">
+                {t("Business date {bd}", { bd: data.business_date })}
+                {" · "}
+                {data.next_run
+                  ? t("Next automatic run {at} ({tz})", { at: data.next_run.slice(0, 16), tz: data.timezone })
+                  : t("Manual only")}
+              </p>
+            )}
+          </div>
+          <Link
+            to={`/end-of-day/${encodeURIComponent(property)}`}
+            className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-brand-300 hover:text-brand-700"
+          >
+            {t("Run night audit now")}
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {err && <p className="text-sm text-rose-700">{translateUI(err)}</p>}
+        {data && !data.runs.length && <p className="text-sm text-zinc-500">{t("No runs yet.")}</p>}
+        {data && data.runs.length > 0 && (
+          <div className="max-h-80 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="text-start text-xs text-zinc-500">
+                <tr>
+                  <th className="py-1 pe-3 text-start font-medium">{t("Started")}</th>
+                  <th className="py-1 pe-3 text-start font-medium">{t("Business date")}</th>
+                  <th className="py-1 pe-3 text-start font-medium">{t("Result")}</th>
+                  <th className="py-1 text-start font-medium">{t("Details")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {data.runs.map((r, i) => (
+                  <tr key={i} className="align-top">
+                    <td className="py-1.5 pe-3 whitespace-nowrap tabular-nums">{r.started_at?.slice(0, 16)}</td>
+                    <td className="py-1.5 pe-3 whitespace-nowrap tabular-nums">{r.business_date}</td>
+                    <td className={`py-1.5 pe-3 whitespace-nowrap ${RUN_TONE[r.status]}`}>
+                      {t(r.status)}
+                      <span className="block text-xs text-zinc-400">
+                        {r.run_trigger === "Scheduled" ? t("Scheduler") : r.user}
+                      </span>
+                    </td>
+                    <td className="py-1.5 text-xs text-zinc-600">{r.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

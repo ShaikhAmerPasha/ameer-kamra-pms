@@ -72,6 +72,8 @@ MODULES: tuple[Module, ...] = (
 			Section("identity", "Identity", "", (
 				S("property_name", "Property name", store=P),
 				S("legal_name", "Legal name", store=P, hint="As registered - printed on invoices."),
+				S("short_code", "Short code", store=P,
+				  hint="2 to 6 letters or digits in allowance voucher numbers (ALW-SR-26-00001). Changing it starts a new voucher series. Invoice numbers keep their own series."),
 				S("property_kind", "Property kind", "select", store=P, options=("Hotel", "Short Term Rental")),
 				S("logo_url", "Logo", "image", store=P, hint="Square, 512px+ - PNG or SVG with transparency looks best."),
 			)),
@@ -91,6 +93,8 @@ MODULES: tuple[Module, ...] = (
 				S("email", "Email", "email", store=P),
 				S("website", "Website", store=P),
 				S("gstin", "Tax registration number", store=P, hint="GSTIN, VAT or TRN - printed on invoices."),
+				S("invoice_footer", "Invoice footer", "textarea", store=P,
+				  hint="Your own lines at the foot of every invoice - e.g. CIN, bank name, account number and IFSC."),
 			)),
 		),
 	),
@@ -109,10 +113,30 @@ MODULES: tuple[Module, ...] = (
 				S("cancellation_fee", "Late cancellation fee", "select", "First Night", P, options=("None", "First Night", "Full Stay")),
 				S("no_show_charge", "No-show charge", "select", "First Night", P, options=("None", "First Night", "Full Stay"),
 				  hint="Posted automatically by the night audit."),
+				S("early_departure_fee", "Early departure charge", "select", "All Nights",
+				  options=("None", "One Night", "All Nights"),
+				  hint="A guest checking out before the booked date: the stay is shortened and the unused "
+				       "nights are charged at none, one or all of them. Finance or a Hotel Admin can "
+				       "change it for one stay, with a reason."),
+				S("day_use_overstay", "Day-use overstay", "select", "Next hour",
+				  options=("Next hour", "Next block", "Full day"),
+				  hint="When a day-use guest stays past the planned checkout time: bill the next hour, "
+				       "the next block on a block plan, or switch to a full daily rate."),
 			)),
 			Section("deposits", "Deposits", "", (
 				S("deposit_pct", "Deposit expected at booking", "number", 0, P, min=0, max=100, unit="%"),
 				S("security_deposit_amount", "Security deposit", "number", 0, P, min=0),
+			)),
+			Section("rate_changes", "Rate changes in house",
+			        "Nights already charged to the folio are never re-priced in place.", (
+				S("charged_night_rate_change", "When a stay's rate changes after nights are charged", "select",
+				  "Keep charged nights",
+				  options=("Keep charged nights", "Credit the difference", "Correct back-dated rates"),
+				  hint="Keep charged nights: charged nights keep their rate, only the nights still to come take "
+				       "the new one; give any difference back as an allowance. Credit the difference: when the "
+				       "new rate is lower, Kamra posts a credit for each charged night, dated today. Correct "
+				       "back-dated rates: as Keep, plus Finance or a Hotel Admin can correct charged nights to "
+				       "the current rate with a reason and their PIN; each night is reversed and posted again."),
 			)),
 		),
 	),
@@ -164,6 +188,12 @@ MODULES: tuple[Module, ...] = (
 				S("guest_info_note", "Anything else for guests", "textarea",
 				  hint="Pool hours, parking, quiet hours. Keep it short."),
 			)),
+			Section("guest_alerts", "Guest alerts", "Messages the guest gets on WhatsApp during the stay.", (
+				S("room_charge_whatsapp", "WhatsApp the guest when a charge is posted to the room", "check", 0,
+				  hint="Restaurant, laundry, minibar and desk charges, with the running balance. Needs the "
+				       "room charge template on the WhatsApp connection. At most one message per bill "
+				       "every 10 minutes; room nights and company bills never send one."),
+			)),
 			Section("holds", "Holds & selling", "", (
 				S("hold_minutes", "Hold unconfirmed bookings for", "number", 120, P, min=5, max=10080, unit="min"),
 				S("sell_message", "Sell message", "textarea", store=P,
@@ -189,6 +219,19 @@ MODULES: tuple[Module, ...] = (
 				       "are cancelled with no fee and the room goes back on sale. Late arrivals and "
 				       "bookings made after this time are kept."),
 			)),
+			Section("nightaudit", "Automatic night audit",
+			        "When the scheduler closes the business date. It runs on the property's "
+			        "time zone (Property settings) and closes one day per run.", (
+				S("night_audit_auto", "Run the night audit automatically", "check", 1,
+				  hint="Off: the scheduler never closes this property; staff close the day "
+				       "from End of Day."),
+				S("night_audit_time", "Run at", "time", "03:00",
+				  hint="Property local time. Checked every 15 minutes, so the audit starts "
+				       "within 15 minutes of this time."),
+				S("night_audit_grace_minutes", "Wait after that time", "number", 0,
+				  min=0, max=120, unit="min",
+				  hint="Extra delay, for a bar or restaurant still posting after the set time."),
+			)),
 			Section("auditchecks", "Night audit checklist",
 			        "Checks run before the night audit closes the day (Finance → End of Day). "
 			        "A blocking check stops a manual run until it is resolved or a supervisor "
@@ -202,13 +245,17 @@ MODULES: tuple[Module, ...] = (
 				S("na_block_departures", "Departures still in house block the audit", "check", 1,
 				  hint="Guests due out on the business date who are still Checked In: check them "
 				       "out or extend the stay. Off: listed as a warning."),
+				S("na_auto_extend", "Extend unchecked-out departures one night", "check", 0,
+				  hint="On: a guest still Checked In past their departure date is extended by one "
+				       "night when the audit runs, and that night is posted like any other. A stay "
+				       "that can't be extended (the room is booked) stays on the checklist."),
 				S("na_high_balance_threshold", "Flag in-house folios owing more than", "number", 50000,
 				  min=0, hint="0 turns the high-balance check off."),
 				S("na_rate_variance_tolerance", "Rate variance tolerance", "number", 1.0,
 				  min=0, max=100000,
 				  hint="A room night posted more than this away from the booked (locked) "
 				       "nightly rate is listed as a rate variance."),
-				S("na_auto_audit_with_blockers", "Scheduled 03:00 audit when checks block", "select",
+				S("na_auto_audit_with_blockers", "Scheduled audit when checks block", "select",
 				  "Run and report exceptions",
 				  options=("Run and report exceptions", "Hold and alert"),
 				  hint="Run and report exceptions: the date always rolls; open items go in the "
@@ -264,7 +311,7 @@ MODULES: tuple[Module, ...] = (
 	),
 	Module(
 		"fnb", "F&B", "Restaurant outlets, the menu and table reservations.",
-		editors=("Hotel Admin", "Finance"), toggle=True,
+		editors=("Hotel Admin", "Finance", "F&B Manager"), toggle=True,
 		related=(("Outlets", "/outlets"), ("Menu", "/menu-items"), ("Ingredients", "/ingredients"),
 		         ("Kitchen inventory", "/inventory"),
 		         ("Kitchen display", "/kitchen"), ("Printers", "/printers")),
@@ -360,6 +407,9 @@ MODULES: tuple[Module, ...] = (
 				S("cleaning_fee_taxable", "Cleaning fee is taxable", "check", 1, P),
 				S("pets_allowed", "Pets allowed", "check", 0, P,
 				  hint="Shows a Pets count on the booking pages and the desk booking form."),
+				S("sells_alcohol", "Sells alcohol", "check", 1,
+				  hint="Off for a dry property: every alcohol field, tick box and label is hidden, in "
+				       "every language. Nothing posted before changes."),
 				S("pet_charge", "Pet charge", "number", 0, P, min=0,
 				  hint="Per pet, taxed at the room's rate. 0 lets pets stay free."),
 				S("pet_charge_basis", "Pet charge applies", "select", "Per stay", P,
@@ -390,6 +440,10 @@ MODULES: tuple[Module, ...] = (
 				       "which is logged. AI agents can never override."),
 				S("credit_overdue_grace_days", "Overdue grace period", "number", 0, min=0, max=365, unit="days",
 				  hint="A bill counts against the company only once it is this many days past its due date."),
+				S("credit_reminders", "Email payment reminders", "check", 0,
+				  hint="Each morning, email a company's billing contact 3 days before a bill is due, on the "
+				       "due date and 15 days after, with its statement attached. Each reminder goes once per "
+				       "bill, and Finance gets a notice of what was sent."),
 			)),
 			Section("cashier", "Cashier controls", "", (
 				S("use_cashier_tills", "Take money through cashier tills", "check", 1,
@@ -403,6 +457,26 @@ MODULES: tuple[Module, ...] = (
 				S("max_cash_refund", "Cash refund limit for new cashiers", "number", 5000, min=0),
 				S("till_variance_tolerance", "Till variance that needs a manager", "number", 0, min=0,
 				  hint="A till closed over or short by more than this is flagged for a manager to review. 0 turns the check off."),
+				S("allowance_approval", "Allowances need a manager's approval", "select", "Off",
+				  options=("Off", "Hotel Admin", "Hotel Admin or Finance"),
+				  hint="Who approves an allowance the desk asks for. Until approved it stays off the bill. "
+				       "A manager approves on the spot with their PIN, or later from Allowances to approve. "
+				       "AI agents can ask, never approve."),
+				S("allowance_approval_above", "Only allowances above", "number", 0, min=0,
+				  hint="Smaller allowances post straight away. 0 means every allowance needs approval."),
+			)),
+			Section("fx", "Exchange rates",
+			        "A guest paying in foreign money needs today's rate: typed in on the Currency Desk, "
+			        "or fetched from an online market rate. A rate typed in by staff always wins over "
+			        "a fetched one for the same day.", (
+				S("fx_currencies", "Foreign currencies taken", "text",
+				  "USD, EUR, GBP, AED, SAR, SGD, AUD, JPY",
+				  hint="ISO codes, separated by commas. Fetch today's rates gets these."),
+				S("fx_margin_pct", "Margin on the market rate", "number", 2.0, min=0, max=20, unit="%",
+				  hint="Buy rate = market rate less this; sell rate = market rate plus this."),
+				S("fx_auto_fetch", "Fetch rates automatically every day", "check", 0,
+				  hint="Each business date, rates missing for these currencies are fetched online. "
+				       "Off: Finance fetches or types them on the Currency Desk."),
 			)),
 		),
 	),
@@ -486,12 +560,37 @@ def _turnover_name(property: str) -> str | None:
 	return frappe.db.get_value("Turnover Profile", {"property": property, "is_default": 1}, "name")
 
 
+def fx_currencies_default(property: str) -> str:
+	"""The country pack's usual foreign currencies (FX_CURRENCIES, else the
+	generic list), less the property's own currency."""
+	from kamra.ledger import home_currency
+	from kamra.localization import generic, pack_for
+	home = home_currency(property)
+	codes = getattr(pack_for(property), "FX_CURRENCIES", generic.FX_CURRENCIES)
+	return ", ".join(c for c in codes if c != home)
+
+
+# ponytail: one setting whose default depends on the property; a callable
+# field on S when a second one appears
+PROPERTY_DEFAULTS = {"fx_currencies": fx_currencies_default}
+
+
+def _default(property: str | None, spec: S):
+	fn = PROPERTY_DEFAULTS.get(spec.key)
+	if fn and property:
+		try:
+			return fn(property)
+		except Exception:
+			return spec.default
+	return spec.default
+
+
 def get_setting(property: str | None, key: str, default=None):
 	"""The value of one registry setting for a property, or its default.
 	Safe to call from anywhere (scheduler, hooks) - never raises on a
 	missing property or row."""
 	_, spec = SETTINGS[key]
-	fallback = spec.default if default is None else default
+	fallback = _default(property, spec) if default is None else default
 	if not property:
 		return fallback
 	try:
@@ -563,7 +662,7 @@ def _values(property: str, module: Module) -> dict:
 	for s in keys:
 		raw = (prop or {}).get(s.key) if s.store == P else \
 			(turnover or {}).get(s.key) if s.store == "turnover" else kv.get(s.key)
-		out[s.key] = s.default if raw is None or raw == "" else _coerce(s, raw)
+		out[s.key] = _default(property, s) if raw is None or raw == "" else _coerce(s, raw)
 	return out
 
 
@@ -587,8 +686,8 @@ def _enabled_modules(property: str) -> list:
 
 # --- endpoints ---------------------------------------------------------------
 
-def _spec_json(s: S) -> dict:
-	d = {"key": s.key, "label": s.label, "type": s.type, "default": s.default,
+def _spec_json(s: S, property: str | None = None) -> dict:
+	d = {"key": s.key, "label": s.label, "type": s.type, "default": _default(property, s),
 	     "hint": s.hint, "store": s.store}
 	for k in ("options", "options_source", "min", "max", "unit"):
 		v = getattr(s, k)
@@ -598,7 +697,7 @@ def _spec_json(s: S) -> dict:
 
 
 @frappe.whitelist()
-@require_roles("Finance", "Front Desk", "Night Auditor", "Kamra Agent")
+@require_roles("Finance", "Front Desk", "Night Auditor", "F&B Manager", "Kamra Agent")
 def menu_masters(property: str) -> dict:
 	"""Allergen tags, prep stations, courses and category suggestions for
 	the Menu form and kitchen display. Edited under Settings → F&B → Menu
@@ -614,7 +713,7 @@ def menu_masters(property: str) -> dict:
 
 @frappe.whitelist()
 @require_roles("Front Desk", "Finance", "Revenue Manager", "Housekeeping",
-               "Housekeeping Supervisor")
+               "Housekeeping Supervisor", "F&B Manager")
 def settings_schema(property: str) -> dict:
 	"""Every settings page this user may see for the property, with current
 	values. Pages they can't change come back read-only (can_edit=False)."""
@@ -633,7 +732,7 @@ def settings_schema(property: str) -> dict:
 			"editors": list(m.editors), "can_edit": editable,
 			"related": [{"label": a, "to": b} for a, b in m.related],
 			"sections": [{"id": sec.id, "title": sec.title, "description": sec.description,
-			              "settings": [_spec_json(s) for s in sec.settings]} for sec in m.sections],
+			              "settings": [_spec_json(s, property) for s in sec.settings]} for sec in m.sections],
 			"values": _values(property, m),
 		})
 	return {
@@ -672,7 +771,7 @@ def _validate(spec: S, val):
 
 
 @frappe.whitelist(methods=["POST"])
-@require_roles("Finance", "Revenue Manager", "Housekeeping Supervisor")
+@require_roles("Finance", "Revenue Manager", "Housekeeping Supervisor", "F&B Manager")
 def save_settings(property: str, module: str, changes) -> dict:
 	"""Change some settings on one module page. Validates every key against
 	the registry, refuses keys from another module, and writes one

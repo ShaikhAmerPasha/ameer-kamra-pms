@@ -10,6 +10,7 @@ import CheckInDialog from "../components/CheckInDialog"
 import CheckOutDialog from "../components/CheckOutDialog"
 import type { ShellContext } from "../AppShell"
 import { cn } from "../lib/utils"
+import { shiftDate } from "../lib/stay"
 import { cur, moneyLocale } from "../lib/money"
 import { serverError } from "../lib/resource"
 import { useT, t as translate, uiDateLocale } from "../lib/i18n"
@@ -28,11 +29,8 @@ const iso = (d: Date) => {
   const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
   return z.toISOString().slice(0, 10)
 }
-const shift = (day: string, n: number) => {
-  const d = new Date(day + "T00:00:00")
-  d.setDate(d.getDate() + n)
-  return iso(d)
-}
+// "" for a bad ?date= in the URL rather than an Invalid Date crash
+const shift = shiftDate
 const money = (n: number) =>
   `${cur()}${Number(n || 0).toLocaleString(moneyLocale(), { maximumFractionDigits: 0 })}`
 const short = (d: string) =>
@@ -58,7 +56,10 @@ export default function InHouse() {
   const tab = (TABS.some((x) => x.id === params.get("tab")) ? params.get("tab") : "arrivals") as Tab
   const today = iso(new Date())
   const date = params.get("date") || today
+  // expected arrivals over a range: date..until (one day when not set)
+  const until = tab === "arrivals" && (params.get("until") ?? "") > date ? params.get("until")! : ""
   const [snap, setSnap] = useState<Snapshot | null>(null)
+  const [rangeArrivals, setRangeArrivals] = useState<ReservationRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
   const [checkingOut, setCheckingOut] = useState<string | null>(null)
@@ -73,9 +74,26 @@ export default function InHouse() {
   }, [date, today])
   useEffect(load, [load, refreshKey])
 
-  const setQuery = (next: { tab?: Tab; date?: string }) => {
+  // ponytail: one snapshot per day, capped at 14 days; add a range endpoint
+  // if desks want longer lists
+  useEffect(() => {
+    if (!until) { setRangeArrivals(null); return }
+    const days: string[] = []
+    for (let d = shift(date, 1); d && d <= until && days.length < 13; d = shift(d, 1)) days.push(d)
+    let live = true
+    Promise.all(days.map((d) => getSnapshot(d)))
+      .then((snaps) => { if (live) setRangeArrivals(snaps.flatMap((s) => s.arrivals ?? [])) })
+      .catch((e) => setError(serverError(e)))
+    return () => { live = false }
+  }, [date, until, refreshKey])
+
+  const setQuery = (next: { tab?: Tab; date?: string; until?: string }) => {
     const p = new URLSearchParams(params)
     if (next.tab) p.set("tab", next.tab)
+    if (next.until !== undefined) {
+      if (next.until) p.set("until", next.until)
+      else p.delete("until")
+    }
     if (next.date !== undefined) {
       if (next.date === today) p.delete("date")
       else p.set("date", next.date)
@@ -84,7 +102,7 @@ export default function InHouse() {
   }
 
   const rows: Record<Tab, ReservationRow[]> = {
-    arrivals: snap?.arrivals ?? [],
+    arrivals: [...(snap?.arrivals ?? []), ...(rangeArrivals ?? [])],
     "in-house": snap?.in_house ?? [],
     departures: snap?.departures ?? [],
   }
@@ -136,6 +154,14 @@ export default function InHouse() {
           >
             <ChevronRight className="size-4" />
           </button>
+          {tab === "arrivals" && (
+            <label className="flex items-center gap-1 border-s border-zinc-200 ps-2 text-xs text-zinc-500">
+              {t("Until")}
+              <input type="date" className="rounded-md px-1 py-1 text-sm text-zinc-700" value={until}
+                min={shift(date, 1)} max={shift(date, 13)}
+                onChange={(e) => setQuery({ until: e.target.value })} />
+            </label>
+          )}
         </div>
       </div>
 

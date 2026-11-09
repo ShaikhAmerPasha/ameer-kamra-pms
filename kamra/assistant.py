@@ -11,7 +11,7 @@ import json
 
 import frappe
 import requests
-from frappe.utils import cint, nowdate
+from frappe.utils import add_days, cint, getdate, nowdate
 
 from kamra.assistant_privacy import processor_disclosure, scrub_for_llm
 from kamra.authz import require_roles
@@ -22,14 +22,49 @@ from kamra.mcp_tools import (MEAL_PLAN_PARAM,
 
 MAX_TOOL_ROUNDS = 6
 TIMEOUT = 60
+OUT_OF_CREDIT = ("Your AI key is out of credit. Top it up with your provider "
+                 "or change the key in Settings > AI assistant.")
+
+
+def _out_of_credit(resp) -> bool:
+	"""The provider refused for money, not for the request: OpenAI's 429
+	insufficient_quota, OpenRouter's 402, "credit balance is too low"."""
+	if resp.status_code == 402:
+		return True
+	text = (resp.text or "").lower()
+	return any(m in text for m in ("insufficient_quota", "billing", "credit"))
+
+
+def _no_credit() -> dict:
+	# the code lets the chat screen add a link to the AI settings
+	return {"message": frappe._(OUT_OF_CREDIT), "code": "out_of_credit"}
+
+
+def _sse(event, data):
+	return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _provider_error(resp, limit: int = 300) -> str:
+	if _out_of_credit(resp):
+		return frappe._(OUT_OF_CREDIT)
+	return f"AI provider error ({resp.status_code}): {(resp.text or '')[:limit]}"
+
 
 SYSTEM = """You are Kamra Agent, the assistant for {property_name}, a hotel
 running Kamra PMS. Today is {today}. You help staff work faster: look
 things up, quote, book, check guests in and out, post charges, take
 payments, preview and process cancellations.
 
+The next 7 days: {week}.
+
 Rules:
-- Numbers come from tools, never from you. Always quote before booking.
+- Read weekdays from that list, never work them out. "This Friday" is the
+  Friday in the list, or today if today is a Friday. Say the weekday and date
+  back when you use one.
+- Numbers come from tools, never from you. Always call `quote` with the requested dates and exact adult/child occupancy before quoting or booking. Never quote prices using the base_price from `booking_options` or `availability`, which only reflect base occupancy without extra guests or taxes.
+  Always quote the total payable price (`amount_after_tax` or `totals.total`).
+  This property's {tax_mode}. When rates include taxes, present the quote directly as the final total price (e.g. "{currency_label}360, taxes included").
+  Do not break down or unbundle pre-tax base rates and tax amounts unless specifically requested by the guest or staff.
 - NEVER claim you did something unless a tool call returned success for it.
   If you have no tool for a request, say so plainly and stop - do not
   pretend, and do not substitute an unrelated tool. (There is no way to
@@ -71,7 +106,25 @@ Rules:
 - Before cancelling, run the cancellation preview and state the fee.
 - Confirm irreversible actions (cancel, checkout with balance, voiding a
   charge) in one short question before calling the tool.
-- Be brief and concrete - front desk answers, not essays. Amounts in ₹.
+- Be brief and concrete - front desk answers, not essays.
+- Staff may be new and may not know hotel words. Use plain everyday
+  words, and when something is missing ask for ONE thing at a time.
+- When a question has a few likely answers (yes/no, a guest to pick, a
+  room type, a payment mode), end your reply with one last line exactly
+  like: Options: Yes, go ahead | No, change it
+  Only add this line when your reply asks a question, never after a plain answer.
+  The screen turns each option into a button that sends it back as the
+  reply. At most 6 options, a few words each, only ones you can act on.
+  For "who", list real names from a tool (e.g. front_desk_today arrivals
+  for a check-in, in-house guests for a check-out), never invented ones.
+- The property's currency is {currency}. Its display label is {currency_label}.
+  Use that label for monetary amounts in the property's currency. It comes
+  from Frappe's Currency.symbol, falling back to the ISO currency code when
+  no symbol is configured. Preserve any different currency explicitly
+  supplied by a tool; include its ISO code when needed to distinguish it.
+  Never infer currency from the conversation language or earlier messages.
+  Do not convert amounts or replace a tool result's explicit currency.
+  If currency is unspecified, ask rather than guess.
 {extra}"""
 
 # tool name → (kamra.api function, description, JSON-schema params,
@@ -236,8 +289,10 @@ EXTRA_TOOLS = {
 		"open tills, open restaurant bills, departures still in house, arrivals "
 		"and what the no-show policy will do, rate variances, outlet bills on "
 		"rooms, high balances, companies over credit limit, room status "
-		"discrepancies. Each check has a severity (block | warn | info), a "
-		"count, the rows and a suggested action. Run it before run_night_audit.",
+		"discrepancies. Only checks under `blocking` stop the audit. `warnings` "
+		"are worth a look but do not stop it, and `clear` lists checks with "
+		"nothing to do. If `blocking` is empty, say the audit can run. Run it "
+		"before run_night_audit.",
 		{}, True, False),
 	"run_night_audit": (
 		"run_night_audit",
@@ -346,7 +401,10 @@ TOOLS = {
 	**EXTRA_TOOLS,
 	"front_desk_today": (
 		"front_desk_snapshot",
-		"Today's arrivals, departures, in-house guests (with paid/due) and room board.",
+		"Today's board. `arrivals` are still to come, not in the hotel yet; "
+		"`in_house` are staying now; `departures` leave today. balance_due is "
+		"what a guest owes, and `credit` is what they have overpaid. A guest "
+		"with balance_due 0 owes nothing.",
 		{}, True, False),
 	"availability": (
 		"availability_calendar",
@@ -365,7 +423,7 @@ TOOLS = {
 		 "voucher_code": {"type": "string"}}, True, False),
 	"booking_options": (
 		"booking_options",
-		"Room types, meal plans, companies, travel agents, experiences, sell message and policies.",
+		"Room types catalog, meal plans, companies, travel agents, experiences, sell message and policies. Do not use its base_price to quote stays; call `quote` for actual pricing with occupancy and taxes.",
 		{}, True, False),
 	"create_booking": (
 		"create_booking",
@@ -424,8 +482,30 @@ TOOLS = {
 	"group_pickup_status": (
 		"group_detail",
 		"Group Rooms Control for a group booking: the block, per-room-type "
-		"pickup (blocked/picked/remaining), rooming list, event, folio.",
+		"pickup (blocked/picked/remaining), rooming list, event, the main "
+		"room and the group bill balance.",
 		{"group_booking": {"type": "string"}}, False, False),
+	"create_group_booking": (
+		"create_group_booking",
+		"Book a group (corporate, wedding) in one go: rooms = [{room_type, "
+		"count, room?, guest_name?}]. master_index picks the main room whose "
+		"guest pays master_pays (default \"Room only\" = room + tax) for every "
+		"room on one group bill.",
+		{"group_name": {"type": "string"},
+		 "check_in_date": {"type": "string"},
+		 "check_out_date": {"type": "string"},
+		 "rooms": {"type": "array", "items": {"type": "object"}},
+		 "guest_name": {"type": "string"}, "phone": {"type": "string"},
+		 "company": {"type": "string"}, "group_type": {"type": "string"},
+		 "master_index": {"type": "integer"},
+		 "master_pays": {"type": "string"}}, True, True),
+	"settle_group_bill": (
+		"settle_group_bill",
+		"Settle a group's bill: a payment by mode (amount defaults to the "
+		"balance) or to_city_ledger=1 for a company with credit. Closes it at 0.",
+		{"group_booking": {"type": "string"}, "mode": {"type": "string"},
+		 "amount": {"type": "number"}, "to_city_ledger": {"type": "integer"},
+		 "reference": {"type": "string"}}, False, True),
 	"pickup_group_room": (
 		"pickup_group_room",
 		"Name a guest into a group's room block (creates their reservation "
@@ -473,7 +553,8 @@ TOOLS = {
 	"record_payment": (
 		"add_folio_payment",
 		"Record a payment staff say was received, against a folio (mode: "
-		"Cash, UPI, Card, Bank, Link). folio is "
+		"Cash, Card, Bank Transfer, Payment Link or the country's own modes "
+		"from the property locale). folio is "
 		"the folio id from checkout_context folios[].folio or get_folio. If you "
 		"only have the booking, pass reservation instead and leave folio out: "
 		"the stay's open guest folio is used.",
@@ -612,6 +693,47 @@ def _settings(property: str):
 	return frappe.get_doc("AI Assistant Settings", name) if name else None
 
 
+# the agent's language picker (same list as the mic's); English needs no rule
+REPLY_LANGS = {
+	"hi-IN": "Hindi", "ta-IN": "Tamil", "kn-IN": "Kannada", "te-IN": "Telugu",
+	"ml-IN": "Malayalam", "ar-SA": "Arabic", "es-ES": "Spanish",
+	"pt-BR": "Brazilian Portuguese",
+}
+
+
+def _reply_language(lang: str | None) -> str:
+	name = REPLY_LANGS.get(lang or "")
+	if not name:
+		return ""
+	return (f"\n- Write every reply in {name}, in its own script, even when the "
+	        "staff type in English. Keep guest names, room numbers, booking "
+	        "references and amounts exactly as the tools give them. Keep the "
+	        "word \"Options:\" in English at the start of the options line; "
+	        "write the options themselves in " + name + ".")
+
+
+def _system_prompt(property: str, settings, lang: str | None = None) -> str:
+	"""Use the property's currency and Frappe symbol in both chat paths."""
+	prop = frappe.get_cached_doc("Property", property)
+	currency = prop.get("currency")
+	if not currency:
+		from kamra.localization import pack_for
+
+		currency = pack_for(property).locale(prop).get("currency")
+	symbol = (frappe.db.get_value("Currency", currency, "symbol") or "").strip() if currency else ""
+	inclusive = bool(prop.get("rates_include_tax"))
+	tax_mode = "rates include taxes" if inclusive else "rates exclude taxes"
+	today = getdate(nowdate())
+	week = ", ".join(f"{d:%A} {d}" for d in (add_days(today, i) for i in range(1, 8)))
+	return SYSTEM.format(
+		property_name=prop.property_name or property, today=f"{today:%A} {today}", week=week,
+		currency=currency or "unspecified",
+		currency_label=symbol or currency or "unspecified",
+		tax_mode=tax_mode,
+		extra=("\n" + settings.extra_instructions) if settings.extra_instructions else "",
+	) + _reply_language(lang)
+
+
 @frappe.whitelist()
 def assistant_status(property: str):
 	from kamra.authz import assert_property_access
@@ -741,7 +863,8 @@ def test_connection(property: str, base_url: str | None = None,
 		return {
 			"ok": False,
 			"status": resp.status_code,
-			"error": (resp.text or "")[:400],
+			"error": (frappe._(OUT_OF_CREDIT) if _out_of_credit(resp)
+			          else (resp.text or "")[:400]),
 			"base_url": base,
 			"model": mdl,
 			"latency_ms": ms,
@@ -933,6 +1056,32 @@ def _missing_refs(text: str) -> str:
 	return f"\n\nRef: {', '.join(missing)}" if missing else ""
 
 
+def _audit_for_agent(result: dict) -> dict:
+	"""Sort the checklist so a clear or warn-only check can't be read as a blocker."""
+	checks = result.pop("checks")
+	blockers = set(result["blockers"])
+	return {
+		**result,
+		"blocking": [c for c in checks if c["key"] in blockers],
+		"warnings": [c for c in checks if c["count"] and c["key"] not in blockers],
+		"clear": [c["title"] for c in checks if not c["count"]],
+	}
+
+
+def _desk_for_agent(result: dict) -> dict:
+	"""An overpaid stay shows as a credit, so a negative due can't be read as owing."""
+	for key in ("arrivals", "departures", "in_house"):
+		for row in result[key]:
+			if row["balance_due"] < 0:
+				row["credit"] = -row["balance_due"]
+				row["balance_due"] = 0
+	return result
+
+
+# what the model sees of a tool's result; the endpoint's own output is unchanged
+_AGENT_VIEW = {"night_audit_precheck": _audit_for_agent, "front_desk_today": _desk_for_agent}
+
+
 def _run_tool(name: str, args: dict, property: str):
 	if not _tool_allowed(name):
 		frappe.throw("Your role doesn't include this action.",
@@ -981,7 +1130,8 @@ def _run_tool(name: str, args: dict, property: str):
 	_note_refs(clean, result)
 	if name == "quote":
 		_note_quote(clean, result)
-	return json.loads(frappe.as_json(result))
+	result = json.loads(frappe.as_json(result))
+	return _AGENT_VIEW[name](result) if name in _AGENT_VIEW else result
 
 
 def _tool_json_for_provider(result, settings):
@@ -994,7 +1144,7 @@ def _tool_json_for_provider(result, settings):
 
 @frappe.whitelist()
 @require_roles("Front Desk", "Finance", "Revenue Manager")
-def ask(property: str, messages):
+def ask(property: str, messages, lang: str | None = None):
 	"""One Kamra Agent turn: history in, answer out. The model may call
 	governed tools along the way; every call is returned so the UI can
 	show what actually happened."""
@@ -1009,10 +1159,7 @@ def ask(property: str, messages):
 	if isinstance(messages, str):
 		messages = frappe.parse_json(messages)
 
-	prop_name = frappe.db.get_value("Property", property, "property_name")
-	system = SYSTEM.format(
-		property_name=prop_name or property, today=nowdate(),
-		extra=("\n" + s.extra_instructions) if s.extra_instructions else "")
+	system = _system_prompt(property, s, lang)
 	convo = [{"role": "system", "content": system}] + list(messages)
 
 	base = (s.base_url or "https://api.openai.com/v1").rstrip("/")
@@ -1027,8 +1174,7 @@ def ask(property: str, messages):
 		resp = _post_chat(base, headers, chat_payload(
 			model, convo, tools=_tool_defs(), temperature=0.2))
 		if resp.status_code != 200:
-			frappe.throw(f"AI provider error ({resp.status_code}): "
-			             f"{resp.text[:300]}")
+			frappe.throw(_provider_error(resp))
 		msg = resp.json()["choices"][0]["message"]
 		convo.append(msg)
 
@@ -1061,7 +1207,7 @@ def ask(property: str, messages):
 
 @frappe.whitelist(methods=["POST"])
 @require_roles("Front Desk", "Finance", "Revenue Manager")
-def ask_stream(property: str, messages):
+def ask_stream(property: str, messages, lang: str | None = None):
 	"""Streaming Kamra Agent turn (Server-Sent Events). Governed tools run FIRST
 	(they need the DB, which the request context still holds), emitting an
 	`action` event each; then the final answer is streamed token-by-token as
@@ -1086,10 +1232,7 @@ def ask_stream(property: str, messages):
 	model = s.model or "gpt-4o-mini"
 	headers = {"Authorization": f"Bearer {api_key}",
 	           "Content-Type": "application/json"}
-	prop_name = frappe.db.get_value("Property", property, "property_name")
-	system = SYSTEM.format(
-		property_name=prop_name or property, today=nowdate(),
-		extra=("\n" + s.extra_instructions) if s.extra_instructions else "")
+	system = _system_prompt(property, s, lang)
 	convo = [{"role": "system", "content": system}] + list(messages)
 
 	# --- resolve tools synchronously (DB access happens here, before streaming)
@@ -1101,6 +1244,9 @@ def ask_stream(property: str, messages):
 		resp = _post_chat(base, headers, chat_payload(
 			model, convo, tools=_tool_defs(), temperature=0.2))
 		if resp.status_code != 200:
+			if _out_of_credit(resp):
+				return Response(_sse("error", _no_credit()) + _sse("done", {}),
+				                mimetype="text/event-stream")
 			frappe.throw(f"AI provider error ({resp.status_code}): {resp.text[:200]}")
 		msg = resp.json()["choices"][0]["message"]
 		calls = msg.get("tool_calls") or []
@@ -1121,10 +1267,9 @@ def ask_stream(property: str, messages):
 			convo.append({"role": "tool", "tool_call_id": call["id"],
 			              "content": _tool_json_for_provider(result, s)})
 
-	def sse(event, data):
-		return f"event: {event}\ndata: {json.dumps(data)}\n\n"
-
+	sse = _sse
 	# read now: the generator runs after the request context is gone
+	no_credit = _no_credit()
 	refs = list(getattr(frappe.local, "kamra_chat_refs", None) or [])
 	cards = _turn_cards()
 
@@ -1137,7 +1282,8 @@ def ask_stream(property: str, messages):
 			r = _post_chat(base, headers, chat_payload(
 				model, convo, stream=True, temperature=0.2), stream=True)
 			if r.status_code != 200:
-				yield sse("error", {"message": f"AI provider error ({r.status_code})"})
+				yield sse("error", no_credit if _out_of_credit(r)
+				          else {"message": f"AI provider error ({r.status_code})"})
 			else:
 				for raw in r.iter_lines():
 					if not raw:
@@ -1189,7 +1335,8 @@ What Kamra does and where to find it:
   cancel, registration card.
 - Guests: profiles with stay history, VIP/blacklist, merge and anonymize.
 - Billing: folios, post charges, take payments, payment links. Closing a folio
-  assigns a GST tax invoice (logo, GSTIN, place of supply, SAC 996311).
+  assigns a tax invoice number (logo, tax ID and the tax details the
+  property's country requires).
 - Reports: one Reports hub - manager flash, shift report, F&B dashboard,
   banquet registers, SLA, voids, department packs (Front Office,
   Housekeeping, F&B, Hotel Manager) and custom reports (build, save, group
@@ -1237,16 +1384,16 @@ def help_ask(property: str, messages):
 	headers = {"Authorization": f"Bearer {api_key}",
 	           "Content-Type": "application/json"}
 	convo = [{"role": "system", "content": HELP_SYSTEM}] + list(messages)
-
-	def sse(event, data):
-		return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+	sse = _sse
+	no_credit = _no_credit()  # translated now, before the request context goes
 
 	def gen():
 		try:
 			r = _post_chat(base, headers, chat_payload(
 				model, convo, stream=True, temperature=0.3), stream=True)
 			if r.status_code != 200:
-				yield sse("error", {"message": f"AI provider error ({r.status_code})"})
+				yield sse("error", no_credit if _out_of_credit(r)
+				          else {"message": f"AI provider error ({r.status_code})"})
 			else:
 				for raw in r.iter_lines():
 					if not raw:

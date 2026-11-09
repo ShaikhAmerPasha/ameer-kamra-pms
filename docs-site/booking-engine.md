@@ -5,7 +5,7 @@ The booking engine is your hotel's own booking page. Guests open
 booking lands in Kamra like any other, with **Website** as its source.
 Revenue Managers and Hotel Admins set it up in the **Booking Engine** app.
 
-![The booking page for Kamra Demo Palace: dates and guests at the top, then each room type with its price for the stay](/img/booking-engine/book.png)
+![The booking page for Kamra Demo Palace: dates and guests and the language dropdown at the top, the photo gallery, the hotel's details and amenities, and Your stay](/img/booking-engine/book.png)
 
 ## Before you start
 
@@ -30,7 +30,9 @@ Revenue Managers and Hotel Admins set it up in the **Booking Engine** app.
    ![The Policies section: check-in and check-out times, cancellation window and fee, no-show charge, deposit and house rules](/img/booking-engine/policies.png)
 
 5. **Optional:** **Amenities** (one per line), **FAQ** (questions and
-   answers), **SEO** (**Meta Title**, **Meta Description**, share image).
+   answers), **SEO** (**Meta Title**, **Meta Description**, share image,
+   and the **Booking engine language**). The title, description and image
+   are what link previews and search results show.
 6. Room types, prices, meal plans and vouchers come from
    [Revenue](/revenue). Give a room type a **Public listing URL slug** to
    give it its own page.
@@ -74,28 +76,44 @@ terms it was made under; a later change only affects new bookings.
 
 ## What the guest does
 
-1. Open `/book`, pick **Check-in**, **Check-out**, **Adults** and
-   **Children**, and click **Check availability**.
-2. Pick a room and click **Book now**. (On a short-term rental the
-   button reads **Book this listing**; in Request to Book mode, **Request
-   to book**.)
-3. Enter **Full name** and **Phone**; **Email (optional)**.
-4. Pick a **Meal plan**, or **Room only**.
-5. Optional: **Add experiences**, a voucher under **Have a code?**, and
-   **Special requests**.
-6. Click **Book now**. The page shows the booking number and what's due
-   now and at the hotel.
+1. Open `/book`. The dates and guests sit in the bar at the top; click
+   it to change **Check-in**, **Check-out**, **Adults** and **Children**,
+   or enter a code under **Have a code?** and click **Apply**, then
+   **Check availability**.
+2. Each room lists its rates: **Room only** and one per meal plan, each
+   with the total for the stay (taxes and fees included), the price per
+   night and the cancellation terms. A promo code shows the old price
+   struck through. Filter by meal plan, or switch on **Available only**.
+3. Click **Select** on a rate, then **Continue** in the summary (the
+   sidebar on a computer, the bar at the bottom on a phone).
+4. Enter **Full name** and **Phone**; **Email (optional)**.
+5. Optional: **Add experiences** and **Special requests**.
+6. Click **Book now**. (On a short-term rental the button reads **Book
+   this listing**; in Request to Book mode, **Request to book**.) The
+   page shows the booking number and what's due now and at the hotel.
+
+Guests pick their language from the dropdown at the top right. The
+**Booking engine language** (Booking Engine → SEO) is what they see first
+on the booking page and the self check-in page; **Guest's browser
+language** keeps the browser's. Your own screen language doesn't change.
+
+The notes under the hotel name come from your settings: free
+cancellation when the policy allows it, pay at the hotel when that is
+the payment mode, instant confirmation in Instant mode, and the check-in
+and check-out times.
 
 ![A guest books a Deluxe room for two nights on /book, adds Yoga at Dawn, and gets a booking number](/img/booking-engine/guest-booking.gif)
 
 ![Each room type with what it sleeps, its amenities, the total for the stay and the deposit](/img/booking-engine/rooms.png)
 
-![Complete your booking: name and phone, meal plan, and ten experiences to add, with Yoga at Dawn added](/img/booking-engine/booking-sheet.png)
+![Complete your booking: the room and rate, name and phone, and experiences to add, with Yoga at Dawn added](/img/booking-engine/booking-sheet.png)
 
 ![Booking confirmed: the booking number and the total, payable at the hotel](/img/booking-engine/confirmed.png)
 
 The dates and guest count are part of the address, for example
 `/book/2026-11-18/2026-11-20/2/0`, so you can link straight to a stay.
+A date in the past opens today, and a link that is not a date (such as
+`/book/your-hotel`) opens that property with tomorrow's dates.
 
 ## Offer experiences
 
@@ -133,7 +151,7 @@ photo, city, type, description and lowest base price per night. The guest
 clicks **View & book →** to open that property's page, with any dates
 already in the address kept.
 
-![Places to stay: cards for Kamra Beach Homestay and Kamra Demo Palace, each with its city, type and price from per night, and initials where no photo is set](/img/booking-engine/properties.png)
+![Places to stay: cards for Kamra Beach Homestay, Kamra Demo Palace and Kamra Lakeside Villa, each with its photo, type, city and price from per night](/img/booking-engine/properties.png)
 
 To link straight to one property, use `/book?property=<slug>` or
 `/stay/<slug>`. The slug is the **Page Slug Prefix** under **Booking

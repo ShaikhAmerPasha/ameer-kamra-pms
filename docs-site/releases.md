@@ -9,10 +9,59 @@ Install or upgrade: [Frappe Cloud Marketplace](/self-hosting/frappe-cloud)
 or [self-hosting](/self-hosting/). After upgrade, open
 **Admin → System Health** to confirm the site version.
 
-## Current stable: v2.6.20
+## New: free video course
+
+Released 27 Oct 2026.
+
+A 27-part [video course](/video-course) on YouTube takes you through
+Kamra from the first sign-in to night audit, reports and AI agents. Each
+episode is about 8 minutes, with chapters, English captions and a link to
+the matching guide. Updated 1 Nov 2026: the episodes now have a clearer
+voice and cleaner audio. The first episodes are out now, and the rest follow
+every Monday, Wednesday and Friday.
+[Watch the playlist](https://www.youtube.com/playlist?list=PLcNTRQwzkzAs).
+
+## Current stable: v2.6.22
+
+Released 27 Oct 2026.
+[GitHub release](https://github.com/Kamra-PMS/kamra-pms/releases/tag/v2.6.22).
+
+- **Booked via an OTA** - key in Booking.com, Agoda, Airbnb and other
+  sites with the OTA reference and the sold price.
+- **Department report packs** - Engineering and Laundry packs; more
+  datasets (tickets, laundry, POS items, shift handover, early
+  departures); week-over-week comparison on pack emails.
+- **MCP** - `city_ledger_aging` so agents can answer who owes money and
+  how late.
+- **Assistant** - chat amounts use the property's currency (thanks
+  @ernestoruiz89).
+- **Laundry** - stays under Housekeeping only; tidier house order cards.
+
+## Recent stables
+
+### v2.6.21
+
+Released 25 Oct 2026.
+
+- **Spanish and Arabic** - the staff app and `/docs/es/`, `/docs/ar/`
+  guides are complete (RTL for Arabic).
+- **Custom reports and department packs** - save and email reports;
+  group and drill down; Front Office, Housekeeping, F&B and Hotel
+  Manager packs in the reader's language.
+- **Date ranges** - From/To on manager flash, F&B dashboard, shift
+  report, folio history, room insights and the banquet pipeline.
+- **Front desk** - book from an empty tape cell; room-move rate
+  choices; Today tiles with balance due and Extend stay; guest list
+  CSV export.
+- **Booking** - international guest phone prefixes (property country
+  as default).
+- **Finance** - past transaction dates need Finance or Hotel Admin.
+- **MCP** - MCP Read / Manage roles, AI access admin, agents only see
+  the reports each role may open.
+
+### v2.6.20
 
 Released 24 Oct 2026.
-[GitHub release](https://github.com/Kamra-PMS/kamra-pms/releases/tag/v2.6.20).
 
 - **Check in now, finish later** - only the room has to be done before
   check-in. Other required steps can be finished after the guest is in,
@@ -22,8 +71,6 @@ Released 24 Oct 2026.
 - **Night audit recovery** - a stuck business date recovers, and the
   printable audit pack can be rebuilt from the desk.
 - **Fixes** - a waived security deposit no longer blocks check-in.
-
-## Recent stables
 
 ### v2.6.19
 
